@@ -1,0 +1,41 @@
+Sector,Short Name,Department,Workflow,Analysis,Collaboration,Transactions,External Facing,Platform Leakage,Integration,Access,Data,Communications
+Legislative and Election,ELECTIONS,Board of Election Commissioners,15,10,15,35,25,20,25,30,20,25
+Regulatory,ETHICS,Board of Ethics,30,25,20,15,10,15,20,25,30,25
+Regulatory,CACC,Chicago Animal Care and Control,20,15,15,30,20,25,25,25,25,25
+Community Services,CCHR,Chicago Commission on Human Relations,25,20,25,10,20,20,20,25,25,30
+Infrastructure Services,CDA,Chicago Department of Aviation,20,15,10,35,20,35,30,20,25,25
+Community Services,CDPH,Chicago Department of Public Health,20,30,15,15,20,25,20,20,35,25
+Infrastructure Services,CDOT,Chicago Department of Transportation,25,20,10,30,15,30,30,20,20,30
+Public Safety,CFD,Chicago Fire Department,15,15,10,40,20,30,25,25,20,30
+Public Safety,POLICE BOARD,Chicago Police Board,30,25,20,15,10,10,20,30,25,25
+Public Safety,CPD,Chicago Police Department,15,20,10,35,20,35,30,25,20,25
+Community Services,CPL,Chicago Public Library,15,10,15,20,40,20,20,30,20,30
+Legislative and Election,COUNCIL,City Council,30,15,30,10,15,15,20,30,20,30
+Finance and Administration,CTO,City Treasurer's Office,20,30,15,25,10,20,25,20,35,20
+Public Safety,COPA,Civilian Office of Police Accountability,25,30,15,20,10,15,20,25,35,20
+Public Safety,CCPSA,Community Commission for Public Safety and Accountability,25,25,25,10,15,10,20,30,25,25
+Finance and Administration,DOAH,Department of Administrative Hearings,20,15,10,40,15,20,25,25,25,25
+Finance and Administration,AIS,Department of Assets  Information  and Services,25,20,20,20,15,30,35,25,20,20
+Regulatory,DOB,Department of Buildings,15,15,10,35,25,25,25,25,20,30
+Regulatory,BACP,Department of Business Affairs and Consumer Protection,15,15,10,30,30,25,20,25,25,30
+City Development,DCASE,Department of Cultural Affairs and Special Events,20,10,20,15,35,15,20,25,20,35
+Community Services,DFSS,Department of Family and Support Services,25,20,15,20,20,25,25,25,25,25
+Finance and Administration,DOF,Department of Finance,20,30,10,30,10,25,30,20,30,20
+City Development,DOH,Department of Housing,20,25,15,20,20,20,25,25,25,25
+Finance and Administration,DHR,Department of Human Resources,30,20,20,20,10,25,25,25,25,25
+Finance and Administration,LAW,Department of Law,25,25,20,20,10,15,20,25,30,25
+City Development,DPD,Department of Planning and Development,20,30,15,15,20,20,25,20,30,25
+Finance and Administration,DPS,Department of Procurement Services,20,15,10,40,15,25,30,20,25,25
+Infrastructure Services,DSS,Department of Streets and Sanitation,25,15,10,35,15,30,30,20,20,30
+Finance and Administration,DTI,Department of Technology and Innovation,20,20,20,20,20,40,35,20,25,20
+Infrastructure Services,DWM,Department of Water Management,20,20,10,35,15,30,30,20,25,25
+Finance and Administration,FinGen,Finance General,25,25,15,20,15,20,25,20,30,25
+Regulatory,LAC,License Appeal Commission,25,15,15,30,15,15,20,30,25,25
+Community Services,MOPD,Mayor's Office for People with Disabilities,20,15,20,15,30,20,20,30,20,30
+Finance and Administration,OBM,Office of Budget and Management,20,35,20,15,10,20,25,20,35,20
+Finance and Administration,CLERK,Office of City Clerk,20,10,15,30,25,20,20,30,20,30
+Regulatory,DOE,Office of Climate and Environmental Equity,20,35,15,15,15,20,20,20,40,20
+Public Safety,OEMC,Office of Emergency Management and Communications,15,15,10,45,15,35,25,20,15,40
+Regulatory,OIG,Office of Inspector General,20,35,20,15,10,15,20,25,35,20
+Public Safety,PSA,Office of Public Safety Administration,15,20,10,40,15,30,30,25,20,25
+Finance and Administration,MO,Office of the Mayor,25,20,25,15,15,15,20,30,25,25
