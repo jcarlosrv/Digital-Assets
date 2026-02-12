@@ -3,6 +3,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import networkx as nx
+from pyvis.network import Network
+import streamlit.components.v1 as components
+import tempfile
 
 # ── Page config ──
 st.set_page_config(
@@ -74,8 +78,8 @@ all_hist_years = [2021, 2022, 2023, 2024, 2025, 2026]
 future_years = [2027, 2028, 2029, 2030, 2031]
 
 # ── Projection helper ──
-def project_series(hist_years, hist_values, future_years, multiplier=1.0):
-    """Project from last actual value using linear trend slope, adjusted by multiplier."""
+def project_series(hist_years, hist_values, future_years, multiplier=1.0, noise_pct=0.0, seed=42):
+    """Project from last actual value using linear trend slope, adjusted by multiplier. Optional noise."""
     x = np.array(hist_years, dtype=float)
     y = np.array(hist_values, dtype=float)
     nonzero = y > 0
@@ -86,7 +90,264 @@ def project_series(hist_years, hist_values, future_years, multiplier=1.0):
     last_value = y[-1]
     last_year = x[-1]
     projected = [max(0, last_value + adjusted_slope * (fy - last_year)) for fy in future_years]
+    if noise_pct > 0:
+        rng = np.random.default_rng(seed)
+        for i in range(len(projected)):
+            noise = rng.uniform(-noise_pct, noise_pct) * projected[i]
+            projected[i] = max(0, projected[i] + noise)
     return projected
+
+
+def build_pyvis_network(df_overlap, type_col, type_colors, title):
+    """Build a pyvis network HTML string for overlap/fragmentation data."""
+    sector_colors = {
+        "Public Safety": "#e63946", "Finance and Administration": "#457b9d",
+        "Infrastructure Services": "#2a9d8f", "Community Services": "#e9c46a",
+        "City Development": "#f4a261", "Legislative and Election": "#264653",
+        "Regulatory": "#a8dadc",
+    }
+
+    G = nx.Graph()
+
+    for _, row in df_overlap.iterrows():
+        group = row["Overlap Group"]
+        typ = row[type_col]
+        overlap_pct = row["Overlap %"] if "Overlap %" in row else row.get("Estimated Overlap (%)", 50)
+        sectors = [s.strip() for s in str(row["Sectors Involved"]).split(",")]
+        savings = row.get("Potential Savings", 0)
+
+        G.add_node(group, label=group, title=f"<b>{group}</b><br>Type: {typ}<br>Overlap: {overlap_pct:.0f}%<br>Savings: ${savings:,.0f}",
+                    color=type_colors.get(typ, "#888"), size=10 + overlap_pct * 0.1, shape="dot", font={"size": 8, "color": "#555"})
+
+        for sector in sectors:
+            if not G.has_node(sector):
+                G.add_node(sector, label=sector.replace(" and ", " & "), title=f"<b>{sector}</b>",
+                           color=sector_colors.get(sector, "#ccc"), size=50, shape="dot",
+                           borderWidth=3, font={"size": 14, "color": "#000", "bold": True})
+            G.add_edge(sector, group, width=max(1, overlap_pct / 20),
+                       color={"color": type_colors.get(typ, "#888"), "opacity": 0.6},
+                       title=f"{sector} ↔ {group}<br>Overlap: {overlap_pct:.0f}%")
+
+        # Sector-to-sector implicit edges
+        for i in range(len(sectors)):
+            for j in range(i + 1, len(sectors)):
+                if G.has_edge(sectors[i], sectors[j]):
+                    G[sectors[i]][sectors[j]]["width"] += overlap_pct / 30
+                else:
+                    G.add_edge(sectors[i], sectors[j], width=overlap_pct / 30,
+                               color={"color": "#ccc", "opacity": 0.3},
+                               title=f"{sectors[i]} ↔ {sectors[j]}", dashes=True)
+
+    net = Network(height="550px", width="100%", bgcolor="#ffffff", font_color="#333")
+    net.from_nx(G)
+    net.set_options("""
+    {"physics": {"forceAtlas2Based": {"gravitationalConstant": -80, "centralGravity": 0.01,
+     "springLength": 150, "springConstant": 0.02, "damping": 0.4}, "solver": "forceAtlas2Based",
+     "stabilization": {"iterations": 200}},
+     "interaction": {"hover": true, "tooltipDelay": 100, "zoomView": true},
+     "edges": {"smooth": {"type": "continuous"}}}
+    """)
+
+    # Build legend HTML
+    type_legend = " ".join(f'<span style="display:inline-block;width:10px;height:10px;background:{c};border-radius:50%;margin-right:3px;"></span>{n}&nbsp;' for n, c in type_colors.items())
+    sect_legend = " ".join(f'<span style="display:inline-block;width:10px;height:10px;background:{c};border-radius:50%;margin-right:3px;"></span>{n.replace(" and ", " & ")}&nbsp;' for n, c in sector_colors.items())
+    legend = f'''<div style="position:absolute;top:8px;left:8px;z-index:999;background:rgba(255,255,255,0.92);padding:8px 12px;border-radius:6px;font:11px sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+        <b>{title}</b><br><b>Types:</b> {type_legend}<br><b>Sectors:</b> {sect_legend}<br>
+        <span style="color:#666;font-size:9px;">● Large=Sector ● Small=Overlap Group  Edge width=Overlap%</span></div>'''
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+        net.save_graph(f.name)
+        with open(f.name, "r") as rf:
+            html = rf.read()
+        html = html.replace("<body>", f"<body>{legend}")
+        return html
+
+
+
+def build_savings_sankey(df, selected_departments, dept_sector_map, short_name_map,
+                         outside_split, dept_worktype_splits, dept_infra_splits, wt_categories, inf_categories,
+                         total_wt_savings, total_inf_savings, total_ai_savings, latest_year):
+    """Build a Sankey: Sector → Asset Type → Worktypes/InfraTypes/Labor → Savings/Optimal.
+    Full budget flows from the beginning; savings and optimal split at the end."""
+    labels = []
+    label_idx = {}
+    sources = []
+    targets = []
+    values = []
+    colors = []
+
+    def get_idx(name):
+        if name not in label_idx:
+            label_idx[name] = len(labels)
+            labels.append(name)
+        return label_idx[name]
+
+    sector_colors_s = {
+        "Public Safety": "rgba(230,57,70,0.6)", "Finance and Administration": "rgba(69,123,157,0.6)",
+        "Infrastructure Services": "rgba(42,157,143,0.6)", "Community Services": "rgba(233,196,106,0.6)",
+        "City Development": "rgba(244,162,97,0.6)", "Legislative and Election": "rgba(38,70,83,0.6)",
+        "Regulatory": "rgba(168,218,220,0.6)",
+    }
+    asset_colors = {
+        "Digital": "rgba(45,90,135,0.5)",
+        "Physical": "rgba(26,58,92,0.5)",
+        "Labor": "rgba(224,123,57,0.5)",
+    }
+
+    # Get all budgets for latest year
+    all_mask = (
+        (df["Department"].isin(selected_departments)) &
+        (df["Year"] == latest_year)
+    )
+    dept_budgets = df[all_mask].groupby(["Department", "IT Type"])["Budget"].sum().reset_index()
+
+    # Aggregate by sector
+    sector_budgets = {}
+    for dept in selected_departments:
+        sector = dept_sector_map.get(dept, "Unknown")
+        if sector not in sector_budgets:
+            sector_budgets[sector] = {"digital": 0, "physical": 0, "labor": 0,
+                                       "appdev": 0, "infra_b": 0, "sw": 0}
+        db = dept_budgets[dept_budgets["Department"] == dept]
+        os_val = db[db["IT Type"].isin(["IT Outside Services", "IT Outside Services*"])]["Budget"].sum()
+        sw_val = db[db["IT Type"].str.strip() == "IT Software"]["Budget"].sum()
+        hw_val = db[db["IT Type"].str.strip() == "IT Hardware"]["Budget"].sum()
+        per_val = db[db["IT Type"].str.strip() == "IT Personnel"]["Budget"].sum()
+
+        appdev = os_val * outside_split["Application Development"]
+        infra_b = os_val * outside_split["Infrastructure"]
+
+        sector_budgets[sector]["digital"] += sw_val + appdev
+        sector_budgets[sector]["appdev"] += appdev
+        sector_budgets[sector]["sw"] += sw_val
+        sector_budgets[sector]["physical"] += hw_val + infra_b
+        sector_budgets[sector]["infra_b"] += infra_b
+        sector_budgets[sector]["labor"] += per_val
+
+    total_appdev = sum(s["appdev"] for s in sector_budgets.values())
+    total_infra_b = sum(s["infra_b"] for s in sector_budgets.values())
+    total_sw = sum(s["sw"] for s in sector_budgets.values())
+
+    n_wt = len(wt_categories) if len(wt_categories) > 0 else 1
+    ai_per_wt = total_ai_savings / n_wt
+
+    # Accumulators for final split
+    wt_savings_acc = {wt: 0.0 for wt in wt_categories}
+    wt_budget_acc = {wt: 0.0 for wt in wt_categories}
+    inf_savings_acc = {cat: 0.0 for cat in inf_categories}
+    inf_budget_acc = {cat: 0.0 for cat in inf_categories}
+    labor_total = 0.0
+
+    for sector, data in sector_budgets.items():
+        s_idx = get_idx(sector)
+
+        # Sector → Digital
+        if data["digital"] > 0:
+            sources.append(s_idx); targets.append(get_idx("Digital"))
+            values.append(data["digital"]); colors.append(asset_colors["Digital"])
+
+        # Sector → Physical
+        if data["physical"] > 0:
+            sources.append(s_idx); targets.append(get_idx("Physical"))
+            values.append(data["physical"]); colors.append(asset_colors["Physical"])
+
+        # Sector → Labor
+        if data["labor"] > 0:
+            sources.append(s_idx); targets.append(get_idx("Labor"))
+            values.append(data["labor"]); colors.append(asset_colors["Labor"])
+            labor_total += data["labor"]
+
+        # Savings proportions for this sector
+        sec_wt_sav = (data["appdev"] / total_appdev) * total_wt_savings if total_appdev > 0 else 0
+        sec_inf_sav = (data["infra_b"] / total_infra_b) * total_inf_savings if total_infra_b > 0 else 0
+        sec_ai_weight = (data["sw"] / total_sw) if total_sw > 0 else 0
+
+        sec_depts = [d for d in selected_departments if dept_sector_map.get(d) == sector]
+
+        # Digital → Worktypes (full budget flows)
+        for wt in wt_categories:
+            avg_split = np.mean([dept_worktype_splits.get(d, {}).get(wt, 0.2) for d in sec_depts]) if sec_depts else 0.2
+            wt_budget_val = data["appdev"] * avg_split + data["sw"] / n_wt
+            if wt_budget_val > 0:
+                sources.append(get_idx("Digital")); targets.append(get_idx(wt))
+                values.append(wt_budget_val); colors.append("rgba(74,144,196,0.4)")
+                wt_budget_acc[wt] += wt_budget_val
+                wt_savings_acc[wt] += sec_wt_sav * avg_split + ai_per_wt * sec_ai_weight
+
+        # Physical → Infra Types (full budget flows)
+        for cat in inf_categories:
+            avg_split = np.mean([dept_infra_splits.get(d, {}).get(cat, 0.25) for d in sec_depts]) if sec_depts else 0.25
+            cat_budget_val = data["infra_b"] * avg_split
+            hw_share = (data["physical"] - data["infra_b"]) * avg_split
+            cat_total_val = cat_budget_val + hw_share
+            if cat_total_val > 0:
+                sources.append(get_idx("Physical")); targets.append(get_idx(cat))
+                values.append(cat_total_val); colors.append("rgba(26,58,92,0.35)")
+                inf_budget_acc[cat] += cat_total_val
+                inf_savings_acc[cat] += sec_inf_sav * avg_split
+
+    # Last level: Worktypes / Infra Types → Savings & Optimal
+    savings_color = "rgba(46,204,113,0.5)"
+    optimal_color = "rgba(180,180,180,0.35)"
+
+    for wt in wt_categories:
+        sav = wt_savings_acc[wt]
+        budget = wt_budget_acc[wt]
+        opt = max(0, budget - sav)
+        if sav > 0:
+            sources.append(get_idx(wt)); targets.append(get_idx("Savings"))
+            values.append(sav); colors.append(savings_color)
+        if opt > 0:
+            sources.append(get_idx(wt)); targets.append(get_idx("Optimal"))
+            values.append(opt); colors.append(optimal_color)
+
+    for cat in inf_categories:
+        sav = inf_savings_acc[cat]
+        budget = inf_budget_acc[cat]
+        opt = max(0, budget - sav)
+        if sav > 0:
+            sources.append(get_idx(cat)); targets.append(get_idx("Savings"))
+            values.append(sav); colors.append(savings_color)
+        if opt > 0:
+            sources.append(get_idx(cat)); targets.append(get_idx("Optimal"))
+            values.append(opt); colors.append(optimal_color)
+
+    # Labor → Optimal (no savings)
+    if labor_total > 0:
+        sources.append(get_idx("Labor")); targets.append(get_idx("Optimal"))
+        values.append(labor_total); colors.append(optimal_color)
+
+    if not values:
+        return None
+
+    # Node colors
+    node_colors = []
+    for lbl in labels:
+        if lbl in sector_colors_s:
+            node_colors.append(sector_colors_s[lbl].replace("0.6", "0.9"))
+        elif lbl in ["Digital", "Physical", "Labor"]:
+            node_colors.append(asset_colors[lbl].replace("0.5", "0.9"))
+        elif lbl in wt_categories:
+            node_colors.append("rgba(74,144,196,0.9)")
+        elif lbl in inf_categories:
+            node_colors.append("rgba(26,58,92,0.9)")
+        elif lbl == "Savings":
+            node_colors.append("rgba(46,204,113,0.9)")
+        elif lbl == "Optimal":
+            node_colors.append("rgba(180,180,180,0.9)")
+        else:
+            node_colors.append("rgba(150,150,150,0.9)")
+
+    fig = go.Figure(go.Sankey(
+        node=dict(pad=15, thickness=20, line=dict(color="black", width=0.5),
+                  label=labels, color=node_colors),
+        link=dict(source=sources, target=targets, value=values, color=colors),
+    ))
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=600,
+                      font=dict(size=10))
+    return fig
+
+
 
 # ── Sidebar filters ──
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Flag_of_Chicago%2C_Illinois.svg/200px-Flag_of_Chicago%2C_Illinois.svg.png", width=120)
@@ -100,16 +361,16 @@ selected_years = st.sidebar.select_slider(
 )
 
 all_sectors = sorted(df["Sector"].unique())
-selected_sector = st.sidebar.selectbox(
-    "Sector",
-    options=["All Sectors"] + all_sectors,
-    index=0,
+selected_sectors_filter = st.sidebar.multiselect(
+    "Sectors",
+    options=all_sectors,
+    default=all_sectors,
 )
 
-if selected_sector == "All Sectors":
-    sector_departments = sorted(df["Department"].unique())
+if selected_sectors_filter:
+    sector_departments = sorted(df[df["Sector"].isin(selected_sectors_filter)]["Department"].unique())
 else:
-    sector_departments = sorted(df[df["Sector"] == selected_sector]["Department"].unique())
+    sector_departments = sorted(df["Department"].unique())
 
 selected_department = st.sidebar.selectbox(
     "Department",
@@ -144,6 +405,14 @@ with st.sidebar.expander("🔮 Projection Settings", expanded=False):
         step=0.05,
         help="1.0 = trend as-is, 0.5 = half the growth, 1.5 = 50% faster growth"
     )
+    projection_noise = st.slider(
+        "Projection Noise %",
+        min_value=0,
+        max_value=20,
+        value=0,
+        step=1,
+        help="0 = smooth lines, 5-10 = realistic variation, 20 = high volatility"
+    ) / 100
 
 with st.sidebar.expander("🧮 Worktype Distribution", expanded=False):
     st.caption("Infrastructure + App Development = 100%")
@@ -491,7 +760,7 @@ with tab_projections:
         proj_rows = []
         for dept in dept_hist.index:
             hist_vals = [dept_hist.loc[dept, y] if y in dept_hist.columns else 0 for y in all_hist_years]
-            proj_vals = project_series(all_hist_years, hist_vals, future_years, growth_multiplier)
+            proj_vals = project_series(all_hist_years, hist_vals, future_years, growth_multiplier, projection_noise, seed=hash(dept) % 10000)
             for y, v in zip(all_hist_years, hist_vals):
                 proj_rows.append({"Department": dept, "Year": y, "Budget": v, "Type": "Actual"})
             for y, v in zip(future_years, proj_vals):
@@ -537,7 +806,7 @@ with tab_projections:
         proj_type_rows = []
         for it_type in type_hist.index:
             hist_vals = [type_hist.loc[it_type, y] if y in type_hist.columns else 0 for y in all_hist_years]
-            proj_vals = project_series(all_hist_years, hist_vals, future_years, growth_multiplier)
+            proj_vals = project_series(all_hist_years, hist_vals, future_years, growth_multiplier, projection_noise, seed=hash(it_type) % 10000)
             for y, v in zip(all_hist_years, hist_vals):
                 proj_type_rows.append({"IT Type": it_type, "Year": y, "Budget": v, "Type": "Actual"})
             for y, v in zip(future_years, proj_vals):
@@ -621,7 +890,7 @@ with tab_outside:
             })
 
     os_hist_vals = [os_by_year[os_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-    os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier)
+    os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=100)
     for fy, fv in zip(future_years, os_proj_vals):
         for subcat, pct in outside_split.items():
             os_sub_rows.append({
@@ -781,7 +1050,7 @@ with tab_worktypes:
                 for y in all_hist_years
             ]
             compound_multiplier = growth_multiplier * wt_growth[wt]
-            wt_proj = project_series(all_hist_years, wt_hist, future_years, compound_multiplier)
+            wt_proj = project_series(all_hist_years, wt_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, wt)) % 10000)
             for fy, fv in zip(future_years, wt_proj):
                 wt_rows.append({
                     "Year": fy, "Worktype": wt,
@@ -974,7 +1243,7 @@ with tab_infra:
                 for y in all_hist_years
             ]
             compound_multiplier = growth_multiplier * infra_growth[cat]
-            cat_proj = project_series(all_hist_years, cat_hist, future_years, compound_multiplier)
+            cat_proj = project_series(all_hist_years, cat_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, cat)) % 10000)
             for fy, fv in zip(future_years, cat_proj):
                 inf_rows.append({
                     "Year": fy, "Category": cat,
@@ -1191,10 +1460,10 @@ sw_by_year = df[sw_mask_all].groupby("Year")["Budget"].sum().reset_index()
 
 # Project OS and SW budgets into future years
 os_hist_vals = [os_by_year[os_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier)
+os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=200)
 
 sw_hist_vals = [sw_by_year[sw_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-sw_proj_vals = project_series(all_hist_years, sw_hist_vals, future_years, growth_multiplier)
+sw_proj_vals = project_series(all_hist_years, sw_hist_vals, future_years, growth_multiplier, projection_noise, seed=300)
 
 # Build year-by-year savings for all years
 all_years_range = list(range(selected_years[0], selected_years[1] + 1)) + future_years
@@ -1474,6 +1743,18 @@ with tab_savings:
             fig_total_icicle.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=450)
             st.plotly_chart(fig_total_icicle, use_container_width=True)
 
+        # ── Sankey: Savings flow through taxonomy ──
+        st.subheader("🔀 Savings Flow — Sector → Asset Type → Categories → Savings/Remaining")
+        fig_sankey = build_savings_sankey(
+            df, selected_departments, dept_sector_map, short_name_map,
+            outside_split, dept_worktype_splits, dept_infra_splits, wt_categories, inf_categories,
+            total_wt_savings, total_inf_savings, total_ai_savings, latest_year
+        )
+        if fig_sankey:
+            st.plotly_chart(fig_sankey, use_container_width=True)
+        else:
+            st.info("No savings data available for Sankey diagram.")
+
         # ── Summary table ──
         st.subheader("📋 Savings by Year")
         display_sav = df_savings_yr[["Year", "Period", "App Overlap", "Infra Consolidation", "AI License Replacement", "Total Savings"]].copy()
@@ -1563,6 +1844,16 @@ with tab_savings:
                     .style.format({"Overlap %": "{:.0f}%", "Load %": "{:.1f}%", "Base Budget": "${:,.0f}", "Potential Savings": "${:,.0f}"}),
                     use_container_width=True, height=350
                 )
+
+            # ── Network Graph ──
+            st.divider()
+            st.subheader("🕸️ Overlap Network")
+            wt_net_html = build_pyvis_network(
+                df_wt_savings, type_col="Work Type", type_colors=wt_colors_tree,
+                title="Overlapping Applications Network"
+            )
+            components.html(wt_net_html, height=580, scrolling=False)
+
         else:
             st.info("No worktype overlap groups match the selected sectors.")
 
@@ -1644,6 +1935,16 @@ with tab_savings:
                     .style.format({"Overlap %": "{:.0f}%", "Load %": "{:.1f}%", "Base Budget": "${:,.0f}", "Potential Savings": "${:,.0f}"}),
                     use_container_width=True, height=350
                 )
+
+            # ── Network Graph ──
+            st.divider()
+            st.subheader("🕸️ Fragmentation Network")
+            inf_net_html = build_pyvis_network(
+                df_inf_savings, type_col="Infra Type", type_colors=inf_colors_tree,
+                title="Infrastructure Consolidation Network"
+            )
+            components.html(inf_net_html, height=580, scrolling=False)
+
         else:
             st.info("No infrastructure fragmentation groups match the selected sectors.")
 
