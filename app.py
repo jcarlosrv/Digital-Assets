@@ -211,8 +211,8 @@ def build_savings_sankey(df, selected_departments, dept_sector_map, short_name_m
         db = dept_budgets[dept_budgets["Department"] == dept]
         os_val = db[db["IT Type"].isin(["IT Outside Services", "IT Outside Services*"])]["Budget"].sum()
         sw_val = db[db["IT Type"].str.strip() == "IT Software"]["Budget"].sum()
-        hw_val = db[db["IT Type"].str.strip() == "IT Hardware"]["Budget"].sum()
-        per_val = db[db["IT Type"].str.strip() == "IT Personnel"]["Budget"].sum()
+        hw_val = db[db["IT Type"].str.strip() == "IT Equipment"]["Budget"].sum()
+        per_val = db[db["IT Type"].str.strip() == "IT Labor"]["Budget"].sum()
 
         appdev = os_val * outside_split["Application Development"]
         infra_b = os_val * outside_split["Infrastructure"]
@@ -338,13 +338,22 @@ def build_savings_sankey(df, selected_departments, dept_sector_map, short_name_m
         else:
             node_colors.append("rgba(150,150,150,0.9)")
 
+    # Format labels with values
+    node_values = [0.0] * len(labels)
+    for s, t, v in zip(sources, targets, values):
+        node_values[s] += v  # not perfect but gives sense of throughput
+
+    display_labels = []
+    for i, lbl in enumerate(labels):
+        display_labels.append(lbl)
+
     fig = go.Figure(go.Sankey(
-        node=dict(pad=15, thickness=20, line=dict(color="black", width=0.5),
-                  label=labels, color=node_colors),
+        node=dict(pad=20, thickness=25, line=dict(color="black", width=0.5),
+                  label=display_labels, color=node_colors),
         link=dict(source=sources, target=targets, value=values, color=colors),
     ))
-    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=600,
-                      font=dict(size=10))
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=650,
+                      font=dict(size=13, color="#000000"))
     return fig
 
 
