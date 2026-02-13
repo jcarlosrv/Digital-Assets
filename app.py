@@ -172,7 +172,7 @@ with st.sidebar.expander("🔮 Projection Settings", expanded=False,icon="🚨")
         help="0 = smooth lines, 5-10 = realistic variation"
     ) / 100
 
-with st.sidebar.expander("🧮 Worktype Distribution", expanded=False):
+with st.sidebar.expander("🧮 Worktype Distribution", expanded=False,icon="🚨"):
     st.caption("Infrastructure + App Development = 100%")
     pct_infra = st.slider("Infrastructure %", 0, 100, 35, 5, key="pct_infra")
     pct_appdev = 100 - pct_infra
@@ -212,7 +212,7 @@ if selected_departments:
 
 pct_wt_total = 100  # Always valid since CSV is pre-validated
 
-with st.sidebar.expander("📈 Worktype Growth Rates", expanded=False):
+with st.sidebar.expander("📈 Worktype Growth Rates", expanded=False,icon="🚨"):
     st.caption("Independent growth multiplier per worktype (applied on top of the global growth multiplier).")
     wt_growth = {}
     wt_defaults = {
@@ -246,7 +246,7 @@ if selected_departments:
 
 pct_infra_total = 100  # Always valid since CSV is pre-validated
 
-with st.sidebar.expander("📈 Infrastructure Growth Rates", expanded=False):
+with st.sidebar.expander("📈 Infrastructure Growth Rates", expanded=False,icon="🚨"):
     st.caption("Independent growth multiplier per infrastructure category.")
     infra_growth = {}
     infra_defaults = {
@@ -260,7 +260,7 @@ with st.sidebar.expander("📈 Infrastructure Growth Rates", expanded=False):
             f"{cat}", 0.5, 2.0, default, 0.05, key=f"infra_growth_{cat}"
         )
 
-with st.sidebar.expander("💰 Savings Factors", expanded=False):
+with st.sidebar.expander("💰 Savings Factors", expanded=False,icon="🚨"):
     st.caption("Control how much of identified overlap/fragmentation translates to actual savings.")
     wt_savings_factor = st.slider("Worktype Overlap Savings %", 0, 100, 50, 5, key="wt_savings") / 100
     inf_savings_factor = st.slider("Infrastructure Fragmentation Savings %", 0, 100, 50, 5, key="inf_savings") / 100
