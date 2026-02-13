@@ -10,7 +10,7 @@ import tempfile
 
 # ── Page config ──
 st.set_page_config(
-    page_title="Chicago IT Budget Dashboard",
+    page_title="Chicago Digital Asset Model",
     page_icon="🏙️",
     layout="wide",
 )
@@ -38,6 +38,32 @@ st.markdown("""
     div[data-testid="stTabs"] button[aria-selected="true"] { border-bottom-color: #1A7A72 !important; color: #1A7A72 !important; font-weight: 600 !important; }
     .stDataFrame { border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     div[data-testid="stExpander"] { border-radius: 8px; border: 1px solid #E2E8F0; }
+    /* Sidebar dark navy */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0F2744 0%, #1B3A5F 100%) !important;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #E2E8F0 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stMetric"] label,
+    section[data-testid="stSidebar"] div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #D4A84B !important;
+    }
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] .stSlider label,
+    section[data-testid="stSidebar"] .stMultiSelect label {
+        color: #94A3B8 !important;
+        font-weight: 500 !important;
+    }
+    section[data-testid="stSidebar"] hr {
+        border-color: rgba(255,255,255,0.15) !important;
+    }
+    section[data-testid="stSidebar"] button {
+        background-color: #1A7A72 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -575,17 +601,18 @@ mask = (
 filtered = df[mask]
 
 # ── Title ──
-st.title("🏙️ City of Chicago — IT Budget Dashboard")
+st.title("🏙️ City of Chicago — Digital Asset Model")
 st.markdown(f"Analyzing **{len(selected_departments)}** departments across **{selected_years[0]}–{selected_years[1]}**")
 
 # ── Tabs ──
-tab_overview, tab_projections, tab_outside, tab_worktypes, tab_infra, tab_savings = st.tabs([
+tab_overview, tab_projections, tab_outside, tab_worktypes, tab_infra, tab_savings, tab_lifecycle = st.tabs([
     "📊 Budget Overview",
     "🔮 Projections",
     "🧮 Outside Services",
     "💻 Applications",
     "🏗️ Infrastructure",
     "💰 Savings",
+    "♻️ Lifecycle Optimization",
 ])
 
 latest_year = selected_years[1]
@@ -1657,11 +1684,12 @@ grand_total_savings = total_wt_savings + total_inf_savings + total_ai_savings
 # ══════════════════════════════════════════════════════════════
 with tab_savings:
 
-    sub_summary, sub_overlap, sub_infra_consol, sub_ai = st.tabs([
+    sub_summary, sub_overlap, sub_infra_consol, sub_ai, sub_lifecycle = st.tabs([
         "📊 Total Summary",
         "🔀 Overlapping Applications",
         "🏗️ Infrastructure Consolidation",
         "🤖 AI vs SaaS Addoption",
+        "♻️ Lifecycle Optimization",
     ])
 
     # Shared colors
@@ -2126,4 +2154,18 @@ with tab_savings:
         else:
             st.info("No IT Software budget found for the selected departments/year.")
 
-st.caption("Data source: City of Chicago IT Budget | Dashboard built with Streamlit & Plotly")
+    # ════════════════════════════════════════════════════════
+    # SUB-TAB 5: LIFECYCLE OPTIMIZATION
+    # ════════════════════════════════════════════════════════
+    with sub_lifecycle:
+        st.header("♻️ Lifecycle Optimization")
+        st.info("🚧 **Coming Soon** — This section will analyze asset lifecycle stages, replacement timelines, and modernization opportunities across the digital portfolio.")
+
+# ══════════════════════════════════════════════════════════════
+# TAB 7: LIFECYCLE OPTIMIZATION
+# ══════════════════════════════════════════════════════════════
+with tab_lifecycle:
+    st.header("♻️ Lifecycle Optimization")
+    st.info("🚧 **Coming Soon** — This section will provide comprehensive lifecycle analysis including asset age tracking, technology debt assessment, replacement planning, and ROI-based modernization roadmaps.")
+
+st.caption("Data source: City of Chicago IT Budget | Digital Asset Model built with Streamlit & Plotly")
