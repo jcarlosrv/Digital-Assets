@@ -158,7 +158,7 @@ else:
     selected_it_types = [selected_it_type]
 
 st.sidebar.divider()
-with st.sidebar.expander("🔮 Projection Settings", expanded=False):
+with st.sidebar.expander("🔮 Projection Settings", expanded=False,icon="🚨"):
     growth_multiplier = st.slider(
         "Growth Rate Multiplier",
         min_value=0.5,
