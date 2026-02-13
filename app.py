@@ -23,9 +23,7 @@ st.markdown("""
     .block-container { padding-top: 1.5rem; background-color: #F8FAFC; }
     div[data-testid="stMetric"] {
         background: linear-gradient(135deg, #1B3A5F 0%, #0F2744 100%);
-        padding: 14px 18px;
-        border-radius: 10px;
-        color: white;
+        padding: 14px 18px; border-radius: 10px; color: white;
         border-left: 4px solid #D4A84B;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
@@ -38,32 +36,12 @@ st.markdown("""
     div[data-testid="stTabs"] button[aria-selected="true"] { border-bottom-color: #1A7A72 !important; color: #1A7A72 !important; font-weight: 600 !important; }
     .stDataFrame { border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     div[data-testid="stExpander"] { border-radius: 8px; border: 1px solid #E2E8F0; }
-    /* Sidebar dark navy */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0F2744 0%, #1B3A5F 100%) !important;
-    }
-    section[data-testid="stSidebar"] * {
-        color: #E2E8F0 !important;
-    }
-    section[data-testid="stSidebar"] div[data-testid="stMetric"] label,
-    section[data-testid="stSidebar"] div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
-        color: #D4A84B !important;
-    }
-    section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stSlider label,
-    section[data-testid="stSidebar"] .stMultiSelect label {
-        color: #94A3B8 !important;
-        font-weight: 500 !important;
-    }
-    section[data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.15) !important;
-    }
-    section[data-testid="stSidebar"] button {
-        background-color: #1A7A72 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 6px !important;
-    }
+    section[data-testid="stSidebar"] { background: linear-gradient(180deg, #0F2744 0%, #1B3A5F 100%) !important; }
+    section[data-testid="stSidebar"] * { color: #E2E8F0 !important; }
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary span { color: #D4A84B !important; font-weight: 600 !important; }
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary svg { color: #D4A84B !important; }
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] { border: 1px solid rgba(255,255,255,0.15) !important; background: rgba(255,255,255,0.05) !important; }
+    section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -115,7 +93,7 @@ future_years = [2027, 2028, 2029, 2030, 2031]
 
 # ── Projection helper ──
 def project_series(hist_years, hist_values, future_years, multiplier=1.0, noise_pct=0.0, seed=42):
-    """Project from last actual value using linear trend slope, adjusted by multiplier. Optional noise."""
+    """Project from last actual value using linear trend slope, adjusted by multiplier."""
     x = np.array(hist_years, dtype=float)
     y = np.array(hist_values, dtype=float)
     nonzero = y > 0
@@ -132,267 +110,6 @@ def project_series(hist_years, hist_values, future_years, multiplier=1.0, noise_
             noise = rng.uniform(-noise_pct, noise_pct) * projected[i]
             projected[i] = max(0, projected[i] + noise)
     return projected
-
-
-def build_pyvis_network(df_overlap, type_col, type_colors, title):
-    """Build a pyvis network HTML string for overlap/fragmentation data."""
-    sector_colors = {
-        "Public Safety": "#8B2942", "Finance and Administration": "#1B3A5F",
-        "Infrastructure Services": "#1A7A72", "Community Services": "#D4A84B",
-        "City Development": "#D97706", "Legislative and Election": "#0F2744",
-        "Regulatory": "#3B82F6",
-    }
-
-    G = nx.Graph()
-
-    for _, row in df_overlap.iterrows():
-        group = row["Overlap Group"]
-        typ = row[type_col]
-        overlap_pct = row["Overlap %"] if "Overlap %" in row else row.get("Estimated Overlap (%)", 50)
-        sectors = [s.strip() for s in str(row["Sectors Involved"]).split(",")]
-        savings = row.get("Potential Savings", 0)
-
-        G.add_node(group, label=group, title=f"<b>{group}</b><br>Type: {typ}<br>Overlap: {overlap_pct:.0f}%<br>Savings: ${savings:,.0f}",
-                    color=type_colors.get(typ, "#888"), size=10 + overlap_pct * 0.1, shape="dot", font={"size": 8, "color": "#555"})
-
-        for sector in sectors:
-            if not G.has_node(sector):
-                G.add_node(sector, label=sector.replace(" and ", " & "), title=f"<b>{sector}</b>",
-                           color=sector_colors.get(sector, "#ccc"), size=50, shape="dot",
-                           borderWidth=3, font={"size": 14, "color": "#000", "bold": True})
-            G.add_edge(sector, group, width=max(1, overlap_pct / 20),
-                       color={"color": type_colors.get(typ, "#888"), "opacity": 0.6},
-                       title=f"{sector} ↔ {group}<br>Overlap: {overlap_pct:.0f}%")
-
-        # Sector-to-sector implicit edges
-        for i in range(len(sectors)):
-            for j in range(i + 1, len(sectors)):
-                if G.has_edge(sectors[i], sectors[j]):
-                    G[sectors[i]][sectors[j]]["width"] += overlap_pct / 30
-                else:
-                    G.add_edge(sectors[i], sectors[j], width=overlap_pct / 30,
-                               color={"color": "#ccc", "opacity": 0.3},
-                               title=f"{sectors[i]} ↔ {sectors[j]}", dashes=True)
-
-    net = Network(height="550px", width="100%", bgcolor="#ffffff", font_color="#333")
-    net.from_nx(G)
-    net.set_options("""
-    {"physics": {"forceAtlas2Based": {"gravitationalConstant": -80, "centralGravity": 0.01,
-     "springLength": 150, "springConstant": 0.02, "damping": 0.4}, "solver": "forceAtlas2Based",
-     "stabilization": {"iterations": 200}},
-     "interaction": {"hover": true, "tooltipDelay": 100, "zoomView": true},
-     "edges": {"smooth": {"type": "continuous"}}}
-    """)
-
-    # Build legend HTML
-    type_legend = " ".join(f'<span style="display:inline-block;width:10px;height:10px;background:{c};border-radius:50%;margin-right:3px;"></span>{n}&nbsp;' for n, c in type_colors.items())
-    sect_legend = " ".join(f'<span style="display:inline-block;width:10px;height:10px;background:{c};border-radius:50%;margin-right:3px;"></span>{n.replace(" and ", " & ")}&nbsp;' for n, c in sector_colors.items())
-    legend = f'''<div style="position:absolute;top:8px;left:8px;z-index:999;background:rgba(255,255,255,0.92);padding:8px 12px;border-radius:6px;font:11px sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
-        <b>{title}</b><br><b>Types:</b> {type_legend}<br><b>Sectors:</b> {sect_legend}<br>
-        <span style="color:#666;font-size:9px;">● Large=Sector ● Small=Overlap Group  Edge width=Overlap%</span></div>'''
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
-        net.save_graph(f.name)
-        with open(f.name, "r") as rf:
-            html = rf.read()
-        html = html.replace("<body>", f"<body>{legend}")
-        return html
-
-
-
-def build_savings_sankey(df, selected_departments, dept_sector_map, short_name_map,
-                         outside_split, dept_worktype_splits, dept_infra_splits, wt_categories, inf_categories,
-                         total_wt_savings, total_inf_savings, total_ai_savings, latest_year):
-    """Build a Sankey: Sector → Asset Type → Worktypes/InfraTypes/Labor → Savings/Optimal.
-    Full budget flows from the beginning; savings and optimal split at the end."""
-    labels = []
-    label_idx = {}
-    sources = []
-    targets = []
-    values = []
-    colors = []
-
-    def get_idx(name):
-        if name not in label_idx:
-            label_idx[name] = len(labels)
-            labels.append(name)
-        return label_idx[name]
-
-    sector_colors_s = {
-        "Public Safety": "rgba(139,41,66,0.6)", "Finance and Administration": "rgba(27,58,95,0.6)",
-        "Infrastructure Services": "rgba(26,122,114,0.6)", "Community Services": "rgba(212,168,75,0.6)",
-        "City Development": "rgba(217,119,6,0.6)", "Legislative and Election": "rgba(15,39,68,0.6)",
-        "Regulatory": "rgba(59,130,246,0.6)",
-    }
-    asset_colors = {
-        "Digital": "rgba(27,58,95,0.5)",
-        "Physical": "rgba(26,122,114,0.5)",
-        "Labor": "rgba(212,168,75,0.5)",
-    }
-
-    # Get all budgets for latest year
-    all_mask = (
-        (df["Department"].isin(selected_departments)) &
-        (df["Year"] == latest_year)
-    )
-    dept_budgets = df[all_mask].groupby(["Department", "IT Type"])["Budget"].sum().reset_index()
-
-    # Aggregate by sector
-    sector_budgets = {}
-    for dept in selected_departments:
-        sector = dept_sector_map.get(dept, "Unknown")
-        if sector not in sector_budgets:
-            sector_budgets[sector] = {"digital": 0, "physical": 0, "labor": 0,
-                                       "appdev": 0, "infra_b": 0, "sw": 0}
-        db = dept_budgets[dept_budgets["Department"] == dept]
-        os_val = db[db["IT Type"].isin(["IT Outside Services", "IT Outside Services*"])]["Budget"].sum()
-        sw_val = db[db["IT Type"].str.strip() == "IT Software"]["Budget"].sum()
-        hw_val = db[db["IT Type"].str.strip() == "IT Equipment"]["Budget"].sum()
-        per_val = db[db["IT Type"].str.strip() == "IT Labor"]["Budget"].sum()
-
-        appdev = os_val * outside_split["Application Development"]
-        infra_b = os_val * outside_split["Infrastructure"]
-
-        sector_budgets[sector]["digital"] += sw_val + appdev
-        sector_budgets[sector]["appdev"] += appdev
-        sector_budgets[sector]["sw"] += sw_val
-        sector_budgets[sector]["physical"] += hw_val + infra_b
-        sector_budgets[sector]["infra_b"] += infra_b
-        sector_budgets[sector]["labor"] += per_val
-
-    total_appdev = sum(s["appdev"] for s in sector_budgets.values())
-    total_infra_b = sum(s["infra_b"] for s in sector_budgets.values())
-    total_sw = sum(s["sw"] for s in sector_budgets.values())
-
-    n_wt = len(wt_categories) if len(wt_categories) > 0 else 1
-    ai_per_wt = total_ai_savings / n_wt
-
-    # Accumulators for final split
-    wt_savings_acc = {wt: 0.0 for wt in wt_categories}
-    wt_budget_acc = {wt: 0.0 for wt in wt_categories}
-    inf_savings_acc = {cat: 0.0 for cat in inf_categories}
-    inf_budget_acc = {cat: 0.0 for cat in inf_categories}
-    labor_total = 0.0
-
-    for sector, data in sector_budgets.items():
-        s_idx = get_idx(sector)
-
-        # Sector → Digital
-        if data["digital"] > 0:
-            sources.append(s_idx); targets.append(get_idx("Digital"))
-            values.append(data["digital"]); colors.append(asset_colors["Digital"])
-
-        # Sector → Physical
-        if data["physical"] > 0:
-            sources.append(s_idx); targets.append(get_idx("Physical"))
-            values.append(data["physical"]); colors.append(asset_colors["Physical"])
-
-        # Sector → Labor
-        if data["labor"] > 0:
-            sources.append(s_idx); targets.append(get_idx("Labor"))
-            values.append(data["labor"]); colors.append(asset_colors["Labor"])
-            labor_total += data["labor"]
-
-        # Savings proportions for this sector
-        sec_wt_sav = (data["appdev"] / total_appdev) * total_wt_savings if total_appdev > 0 else 0
-        sec_inf_sav = (data["infra_b"] / total_infra_b) * total_inf_savings if total_infra_b > 0 else 0
-        sec_ai_weight = (data["sw"] / total_sw) if total_sw > 0 else 0
-
-        sec_depts = [d for d in selected_departments if dept_sector_map.get(d) == sector]
-
-        # Digital → Worktypes (full budget flows)
-        for wt in wt_categories:
-            avg_split = np.mean([dept_worktype_splits.get(d, {}).get(wt, 0.2) for d in sec_depts]) if sec_depts else 0.2
-            wt_budget_val = data["appdev"] * avg_split + data["sw"] / n_wt
-            if wt_budget_val > 0:
-                sources.append(get_idx("Digital")); targets.append(get_idx(wt))
-                values.append(wt_budget_val); colors.append("rgba(27,58,95,0.4)")
-                wt_budget_acc[wt] += wt_budget_val
-                wt_savings_acc[wt] += sec_wt_sav * avg_split + ai_per_wt * sec_ai_weight
-
-        # Physical → Infra Types (full budget flows)
-        for cat in inf_categories:
-            avg_split = np.mean([dept_infra_splits.get(d, {}).get(cat, 0.25) for d in sec_depts]) if sec_depts else 0.25
-            cat_budget_val = data["infra_b"] * avg_split
-            hw_share = (data["physical"] - data["infra_b"]) * avg_split
-            cat_total_val = cat_budget_val + hw_share
-            if cat_total_val > 0:
-                sources.append(get_idx("Physical")); targets.append(get_idx(cat))
-                values.append(cat_total_val); colors.append("rgba(26,122,114,0.35)")
-                inf_budget_acc[cat] += cat_total_val
-                inf_savings_acc[cat] += sec_inf_sav * avg_split
-
-    # Last level: Worktypes / Infra Types → Savings & Optimal
-    savings_color = "rgba(5,150,105,0.5)"
-    optimal_color = "rgba(71,85,105,0.3)"
-
-    for wt in wt_categories:
-        sav = wt_savings_acc[wt]
-        budget = wt_budget_acc[wt]
-        opt = max(0, budget - sav)
-        if sav > 0:
-            sources.append(get_idx(wt)); targets.append(get_idx("Savings"))
-            values.append(sav); colors.append(savings_color)
-        if opt > 0:
-            sources.append(get_idx(wt)); targets.append(get_idx("Optimal"))
-            values.append(opt); colors.append(optimal_color)
-
-    for cat in inf_categories:
-        sav = inf_savings_acc[cat]
-        budget = inf_budget_acc[cat]
-        opt = max(0, budget - sav)
-        if sav > 0:
-            sources.append(get_idx(cat)); targets.append(get_idx("Savings"))
-            values.append(sav); colors.append(savings_color)
-        if opt > 0:
-            sources.append(get_idx(cat)); targets.append(get_idx("Optimal"))
-            values.append(opt); colors.append(optimal_color)
-
-    # Labor → Optimal (no savings)
-    if labor_total > 0:
-        sources.append(get_idx("Labor")); targets.append(get_idx("Optimal"))
-        values.append(labor_total); colors.append(optimal_color)
-
-    if not values:
-        return None
-
-    # Node colors
-    node_colors = []
-    for lbl in labels:
-        if lbl in sector_colors_s:
-            node_colors.append(sector_colors_s[lbl].replace("0.6", "0.9"))
-        elif lbl in ["Digital", "Physical", "Labor"]:
-            node_colors.append(asset_colors[lbl].replace("0.5", "0.9"))
-        elif lbl in wt_categories:
-            node_colors.append("rgba(27,58,95,0.9)")
-        elif lbl in inf_categories:
-            node_colors.append("rgba(26,122,114,0.9)")
-        elif lbl == "Savings":
-            node_colors.append("rgba(5,150,105,0.9)")
-        elif lbl == "Optimal":
-            node_colors.append("rgba(71,85,105,0.9)")
-        else:
-            node_colors.append("rgba(150,150,150,0.9)")
-
-    # Format labels with values
-    node_values = [0.0] * len(labels)
-    for s, t, v in zip(sources, targets, values):
-        node_values[s] += v  # not perfect but gives sense of throughput
-
-    display_labels = []
-    for i, lbl in enumerate(labels):
-        display_labels.append(lbl)
-
-    fig = go.Figure(go.Sankey(
-        node=dict(pad=20, thickness=25, line=dict(color="black", width=0.5),
-                  label=display_labels, color=node_colors),
-        link=dict(source=sources, target=targets, value=values, color=colors),
-    ))
-    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=650,
-                      font=dict(size=13, color="#000000"))
-    return fig
-
-
 
 # ── Sidebar filters ──
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Flag_of_Chicago%2C_Illinois.svg/200px-Flag_of_Chicago%2C_Illinois.svg.png", width=120)
@@ -451,12 +168,8 @@ with st.sidebar.expander("🔮 Projection Settings", expanded=False):
         help="1.0 = trend as-is, 0.5 = half the growth, 1.5 = 50% faster growth"
     )
     projection_noise = st.slider(
-        "Projection Noise %",
-        min_value=0,
-        max_value=20,
-        value=7,
-        step=1,
-        help="0 = smooth lines, 5-10 = realistic variation, 20 = high volatility"
+        "Projection Noise %", min_value=0, max_value=20, value=7, step=1,
+        help="0 = smooth lines, 5-10 = realistic variation"
     ) / 100
 
 with st.sidebar.expander("🧮 Worktype Distribution", expanded=False):
@@ -605,14 +318,11 @@ st.title("🏙️ City of Chicago — Digital Asset Model")
 st.markdown(f"Analyzing **{len(selected_departments)}** departments across **{selected_years[0]}–{selected_years[1]}**")
 
 # ── Tabs ──
-tab_overview, tab_projections, tab_outside, tab_worktypes, tab_infra, tab_savings, tab_lifecycle = st.tabs([
+tab_overview, tab_projections, tab_portfolio, tab_savings = st.tabs([
     "📊 Budget Overview",
     "🔮 Projections",
-    "🧮 Outside Services",
-    "💻 Applications",
-    "🏗️ Infrastructure",
+    "🏛️ Digital Asset Portfolio",
     "💰 Savings",
-    "♻️ Lifecycle Optimization",
 ])
 
 latest_year = selected_years[1]
@@ -665,17 +375,12 @@ with tab_overview:
     with r1c2:
         st.subheader("🧩 Spend by IT Type")
         by_type = filtered.groupby("IT Type")["Budget"].sum().reset_index()
-        type_colors_map = {"IT Equipment": "#1B3A5F", "IT Labor": "#1A7A72", "IT Outside Services": "#D4A84B",
-                           "IT Outside Services*": "#8B2942", "IT Software": "#3B82F6"}
         fig_pie = px.pie(
             by_type, names="IT Type", values="Budget",
-            color="IT Type", color_discrete_map=type_colors_map,
+            color_discrete_sequence=["#1B3A5F", "#1A7A72", "#D4A84B", "#8B2942", "#7C3AED"],
             hole=0.45
         )
-        fig_pie.update_traces(
-            textinfo="percent+label+value", textposition="outside",
-            texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
-        )
+        fig_pie.update_traces(textinfo="percent+label", textposition="outside")
         fig_pie.update_layout(
             margin=dict(l=20, r=20, t=10, b=20),
             height=370,
@@ -687,12 +392,12 @@ with tab_overview:
     r2c1, r2c2 = st.columns(2)
 
     with r2c1:
-        st.subheader("🏢 Top 6 Departments by Budget (2021–2026)")
+        st.subheader(f"🏢 Top 15 Departments by Budget ({latest_year})")
         dept_budget = (
-            filtered
+            filtered[filtered["Year"] == latest_year]
             .groupby("Department")["Budget"].sum()
             .sort_values(ascending=True)
-            .tail(6)
+            .tail(15)
             .reset_index()
         )
         dept_budget["Short Name"] = dept_budget["Department"].map(short_name_map)
@@ -755,6 +460,31 @@ with tab_overview:
         height=550,
     )
     st.plotly_chart(fig_heat, use_container_width=True)
+
+    # ── Year-over-Year changes ──
+    st.subheader(f"📉 Year-over-Year Change by Department ({prev_year} → {latest_year})")
+    yoy_dept = filtered[filtered["Year"].isin([prev_year, latest_year])].groupby(["Department", "Year"])["Budget"].sum().unstack(fill_value=0)
+    if prev_year in yoy_dept.columns and latest_year in yoy_dept.columns:
+        yoy_dept["Change"] = yoy_dept[latest_year] - yoy_dept[prev_year]
+        yoy_dept["Change %"] = (yoy_dept["Change"] / yoy_dept[prev_year].replace(0, 1)) * 100
+        yoy_dept = yoy_dept.sort_values("Change").reset_index()
+        yoy_dept["Short Name"] = yoy_dept["Department"].map(short_name_map)
+
+        fig_yoy = px.bar(
+            yoy_dept, x="Change", y="Short Name",
+            orientation="h",
+            color="Change",
+            color_continuous_scale="RdBu",
+            color_continuous_midpoint=0,
+        )
+        fig_yoy.update_layout(
+            xaxis_tickprefix="$", xaxis_tickformat=",",
+            margin=dict(l=20, r=20, t=10, b=20),
+            height=700,
+            coloraxis_showscale=False,
+            yaxis_title=""
+        )
+        st.plotly_chart(fig_yoy, use_container_width=True)
 
     # ── Data table ──
     with st.expander("📋 View Raw Data"):
@@ -821,6 +551,9 @@ with tab_projections:
         dept_proj_summary = df_dept_proj[df_dept_proj["Type"] == "Projected"].pivot_table(
             index="Department", columns="Year", values="Budget", aggfunc="sum"
         )
+        dept_proj_summary.index = [short_name_map.get(d, d) for d in dept_proj_summary.index]
+        dept_proj_summary.columns = [str(int(c)) for c in dept_proj_summary.columns]
+        st.dataframe(dept_proj_summary.style.format("${:,.0f}"), use_container_width=True, height=300)
 
     # ── Projection by IT Type ──
     with p1c2:
@@ -868,649 +601,573 @@ with tab_projections:
         )
         st.plotly_chart(fig_proj_type, use_container_width=True)
 
-    st.divider()
-
-    # ── Growth Rates ──
-    st.subheader("📊 CAGR Growth Rates (2021–2026)")
-
-    # Compute CAGR helper
-    def compute_cagr(start_val, end_val, years):
-        if start_val > 0 and end_val > 0 and years > 0:
-            return (end_val / start_val) ** (1 / years) - 1
-        return 0
-
-    first_year = all_hist_years[0]
-    last_hist_year = all_hist_years[-1]
-    n_years = last_hist_year - first_year
-
-    gr_c1, gr_c2, gr_c3 = st.columns(3)
-
-    with gr_c1:
-        st.subheader("By Sector")
-        sector_growth = []
-        for sector in sorted(df["Sector"].unique()):
-            sec_depts = df[df["Sector"] == sector]["Department"].unique()
-            sec_mask = (df["Department"].isin(sec_depts)) & (df["Department"].isin(selected_departments)) & (df["IT Type"].isin(selected_it_types))
-            start = df[sec_mask & (df["Year"] == first_year)]["Budget"].sum()
-            end = df[sec_mask & (df["Year"] == last_hist_year)]["Budget"].sum()
-            cagr = compute_cagr(start, end, n_years)
-            if start > 0 or end > 0:
-                sector_growth.append({"Sector": sector, "CAGR": cagr * 100})
-        if sector_growth:
-            df_sg = pd.DataFrame(sector_growth).sort_values("CAGR", ascending=True)
-            fig_sg = px.bar(df_sg, x="CAGR", y="Sector", orientation="h",
-                            color="CAGR", color_continuous_scale=[[0,"#DC2626"],[0.5,"#D4A84B"],[1,"#059669"]], color_continuous_midpoint=0)
-            fig_sg.update_layout(xaxis_ticksuffix="%", margin=dict(l=20, r=20, t=10, b=20),
-                                 height=300, coloraxis_showscale=False, yaxis_title="")
-            st.plotly_chart(fig_sg, use_container_width=True)
-
-    with gr_c2:
-        st.subheader("By Department (Top 10)")
-        dept_growth = []
-        for dept in selected_departments:
-            d_mask = (df["Department"] == dept) & (df["IT Type"].isin(selected_it_types))
-            start = df[d_mask & (df["Year"] == first_year)]["Budget"].sum()
-            end = df[d_mask & (df["Year"] == last_hist_year)]["Budget"].sum()
-            cagr = compute_cagr(start, end, n_years)
-            if start > 0 or end > 0:
-                dept_growth.append({"Department": short_name_map.get(dept, dept), "CAGR": cagr * 100})
-        if dept_growth:
-            df_dg = pd.DataFrame(dept_growth).sort_values("CAGR", ascending=False).head(10).sort_values("CAGR", ascending=True)
-            fig_dg = px.bar(df_dg, x="CAGR", y="Department", orientation="h",
-                            color="CAGR", color_continuous_scale=[[0,"#DC2626"],[0.5,"#D4A84B"],[1,"#059669"]], color_continuous_midpoint=0)
-            fig_dg.update_layout(xaxis_ticksuffix="%", margin=dict(l=20, r=20, t=10, b=20),
-                                 height=350, coloraxis_showscale=False, yaxis_title="")
-            st.plotly_chart(fig_dg, use_container_width=True)
-
-    with gr_c3:
-        st.subheader("By IT Type")
-        type_growth = []
-        for it_type in sorted(df["IT Type"].unique()):
-            t_mask = (df["Department"].isin(selected_departments)) & (df["IT Type"] == it_type)
-            start = df[t_mask & (df["Year"] == first_year)]["Budget"].sum()
-            end = df[t_mask & (df["Year"] == last_hist_year)]["Budget"].sum()
-            cagr = compute_cagr(start, end, n_years)
-            if start > 0 or end > 0:
-                type_growth.append({"IT Type": it_type, "CAGR": cagr * 100})
-        if type_growth:
-            df_tg = pd.DataFrame(type_growth).sort_values("CAGR", ascending=True)
-            fig_tg = px.bar(df_tg, x="CAGR", y="IT Type", orientation="h",
-                            color="CAGR", color_continuous_scale=[[0,"#DC2626"],[0.5,"#D4A84B"],[1,"#059669"]], color_continuous_midpoint=0)
-            fig_tg.update_layout(xaxis_ticksuffix="%", margin=dict(l=20, r=20, t=10, b=20),
-                                 height=300, coloraxis_showscale=False, yaxis_title="")
-            st.plotly_chart(fig_tg, use_container_width=True)
+        type_proj_summary = df_type_proj[df_type_proj["Type"] == "Projected"].pivot_table(
+            index="IT Type", columns="Year", values="Budget", aggfunc="sum"
+        )
+        type_proj_summary.columns = [str(int(c)) for c in type_proj_summary.columns]
+        st.dataframe(type_proj_summary.style.format("${:,.0f}"), use_container_width=True, height=200)
 
 # ══════════════════════════════════════════════════════════════
-# TAB 3: OUTSIDE SERVICES SPLIT
+# TAB 3: DIGITAL ASSET PORTFOLIO (sub-tabs)
 # ══════════════════════════════════════════════════════════════
-with tab_outside:
+with tab_portfolio:
+    ptab_outside, ptab_worktypes, ptab_infra, ptab_lifecycle = st.tabs([
+        "🧮 Outside Services",
+        "💻 Applications",
+        "🏗️ Infrastructure",
+        "♻️ Lifecycle Optimization",
+    ])
 
-    st.caption(f"Combined IT Outside Services & IT Outside Services* split into **Infrastructure ({pct_infra}%)** and **Application Development ({pct_appdev}%)**. Adjust in sidebar.")
+    with ptab_outside:
 
-    # Combine both Outside Services types
-    os_mask = (
-        (df["Department"].isin(selected_departments)) &
-        (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
-    )
-    os_data = df[os_mask]
+        st.caption(f"Combined IT Outside Services & IT Outside Services* split into **Infrastructure ({pct_infra}%)** and **Application Development ({pct_appdev}%)**. Adjust in sidebar.")
 
-    # ── KPIs ──
-    os_total = os_data["Budget"].sum()
-    os_latest = os_data[os_data["Year"] == latest_year]["Budget"].sum()
-    os_prev = os_data[os_data["Year"] == prev_year]["Budget"].sum()
-    os_yoy = ((os_latest - os_prev) / os_prev * 100) if os_prev else 0
+        # Combine both Outside Services types
+        os_mask = (
+            (df["Department"].isin(selected_departments)) &
+            (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
+        )
+        os_data = df[os_mask]
 
-    kc1, kc2, kc3, kc4 = st.columns(4)
-    kc1.metric("Outside Services Total", fmt(os_total))
-    kc2.metric(f"Outside Services {latest_year}", fmt(os_latest), f"{os_yoy:+.1f}% vs {prev_year}")
-    kc3.metric(f"Infrastructure ({latest_year})", fmt(os_latest * outside_split['Infrastructure']))
-    kc4.metric(f"App Development ({latest_year})", fmt(os_latest * outside_split['Application Development']))
+        # ── KPIs ──
+        os_total = os_data["Budget"].sum()
+        os_latest = os_data[os_data["Year"] == latest_year]["Budget"].sum()
+        os_prev = os_data[os_data["Year"] == prev_year]["Budget"].sum()
+        os_yoy = ((os_latest - os_prev) / os_prev * 100) if os_prev else 0
 
-    st.divider()
+        kc1, kc2, kc3, kc4 = st.columns(4)
+        kc1.metric("Outside Services Total", fmt(os_total))
+        kc2.metric(f"Outside Services {latest_year}", fmt(os_latest), f"{os_yoy:+.1f}% vs {prev_year}")
+        kc3.metric(f"Infrastructure ({latest_year})", fmt(os_latest * outside_split['Infrastructure']))
+        kc4.metric(f"App Development ({latest_year})", fmt(os_latest * outside_split['Application Development']))
 
-    # Build actual + projected subcategory data (with slight random variation per year)
-    os_by_year = os_data.groupby("Year")["Budget"].sum().reset_index()
-    os_sub_rows = []
-    rng_split = np.random.default_rng(42)
-    base_infra_pct = outside_split["Infrastructure"]
-    for _, row in os_by_year.iterrows():
-        noise = rng_split.uniform(-0.05, 0.05)
-        yr_infra_pct = max(0.1, min(0.9, base_infra_pct + noise))
-        yr_appdev_pct = 1.0 - yr_infra_pct
-        os_sub_rows.append({
-            "Year": row["Year"], "Subcategory": "Infrastructure",
-            "Budget": row["Budget"] * yr_infra_pct, "Period": "Actual",
-        })
-        os_sub_rows.append({
-            "Year": row["Year"], "Subcategory": "Application Development",
-            "Budget": row["Budget"] * yr_appdev_pct, "Period": "Actual",
-        })
+        st.divider()
 
-    os_hist_vals = [os_by_year[os_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-    os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=100)
-    for fy, fv in zip(future_years, os_proj_vals):
-        noise = rng_split.uniform(-0.05, 0.05)
-        yr_infra_pct = max(0.1, min(0.9, base_infra_pct + noise))
-        yr_appdev_pct = 1.0 - yr_infra_pct
-        os_sub_rows.append({
-            "Year": fy, "Subcategory": "Infrastructure",
-            "Budget": fv * yr_infra_pct, "Period": "Projected",
-        })
-        os_sub_rows.append({
-            "Year": fy, "Subcategory": "Application Development",
-            "Budget": fv * yr_appdev_pct, "Period": "Projected",
-        })
-    df_os_sub = pd.DataFrame(os_sub_rows)
+        # Build actual + projected subcategory data
+        os_by_year = os_data.groupby("Year")["Budget"].sum().reset_index()
+        os_sub_rows = []
+        for _, row in os_by_year.iterrows():
+            for subcat, pct in outside_split.items():
+                os_sub_rows.append({
+                    "Year": row["Year"], "Subcategory": subcat,
+                    "Budget": row["Budget"] * pct, "Period": "Actual",
+                })
 
-    sub_colors = {"Infrastructure": "#1B3A5F", "Application Development": "#D4A84B"}
+        os_hist_vals = [os_by_year[os_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
+        os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=100)
+        for fy, fv in zip(future_years, os_proj_vals):
+            for subcat, pct in outside_split.items():
+                os_sub_rows.append({
+                    "Year": fy, "Subcategory": subcat,
+                    "Budget": fv * pct, "Period": "Projected",
+                })
+        df_os_sub = pd.DataFrame(os_sub_rows)
 
-    os_c1, os_c2 = st.columns(2)
+        sub_colors = {"Infrastructure": "#1B3A5F", "Application Development": "#D4A84B"}
 
-    with os_c1:
-        st.subheader("📊 Infrastructure vs App Development by Year")
-        fig_os_stack = go.Figure()
+        os_c1, os_c2 = st.columns(2)
+
+        with os_c1:
+            st.subheader("📊 Infrastructure vs App Development by Year")
+            fig_os_stack = go.Figure()
+            for subcat in outside_split:
+                subset = df_os_sub[df_os_sub["Subcategory"] == subcat].sort_values("Year")
+                actual_b = subset[subset["Period"] == "Actual"]
+                proj_b = subset[subset["Period"] == "Projected"]
+                color = sub_colors[subcat]
+                fig_os_stack.add_trace(go.Bar(
+                    x=actual_b["Year"], y=actual_b["Budget"],
+                    name=subcat, legendgroup=subcat,
+                    marker_color=color,
+                ))
+                fig_os_stack.add_trace(go.Bar(
+                    x=proj_b["Year"], y=proj_b["Budget"],
+                    name=subcat, legendgroup=subcat, showlegend=False,
+                    marker_color=color, marker_pattern_shape="/",
+                ))
+            fig_os_stack.update_layout(
+                barmode="stack",
+                yaxis_tickprefix="$", yaxis_tickformat=",",
+                xaxis=dict(dtick=1),
+                margin=dict(l=20, r=20, t=10, b=20), height=450,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.25),
+            )
+            st.plotly_chart(fig_os_stack, use_container_width=True)
+
+        with os_c2:
+            st.subheader(f"🍩 Allocation Split ({latest_year})")
+            pie_data = df_os_sub[(df_os_sub["Year"] == latest_year) & (df_os_sub["Period"] == "Actual")]
+            fig_os_pie = px.pie(
+                pie_data, names="Subcategory", values="Budget",
+                color="Subcategory", color_discrete_map=sub_colors, hole=0.45,
+            )
+            fig_os_pie.update_traces(
+                textinfo="percent+label+value", textposition="outside",
+                texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
+            )
+            fig_os_pie.update_layout(
+                margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
+            )
+            st.plotly_chart(fig_os_pie, use_container_width=True)
+
+        # ── Trend lines ──
+        st.subheader("📈 Subcategory Trends (Actual + Projected)")
+        fig_os_trend = go.Figure()
         for subcat in outside_split:
-            subset = df_os_sub[df_os_sub["Subcategory"] == subcat].sort_values("Year")
-            actual_b = subset[subset["Period"] == "Actual"]
-            proj_b = subset[subset["Period"] == "Projected"]
+            subset = df_os_sub[df_os_sub["Subcategory"] == subcat]
+            actual_s = subset[subset["Period"] == "Actual"].sort_values("Year")
+            proj_s = subset[subset["Period"] == "Projected"].sort_values("Year")
+            last_a = actual_s[actual_s["Year"] == actual_s["Year"].max()]
+            proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_s])
             color = sub_colors[subcat]
-            fig_os_stack.add_trace(go.Bar(
-                x=actual_b["Year"], y=actual_b["Budget"],
-                name=subcat, legendgroup=subcat,
-                marker_color=color,
+            fig_os_trend.add_trace(go.Scatter(
+                x=actual_s["Year"], y=actual_s["Budget"],
+                mode="lines+markers", name=subcat,
+                legendgroup=subcat,
+                line=dict(color=color, width=3), marker=dict(size=8),
             ))
-            fig_os_stack.add_trace(go.Bar(
-                x=proj_b["Year"], y=proj_b["Budget"],
-                name=subcat, legendgroup=subcat, showlegend=False,
-                marker_color=color, marker_pattern_shape="/",
+            fig_os_trend.add_trace(go.Scatter(
+                x=proj_bridge["Year"], y=proj_bridge["Budget"],
+                mode="lines+markers", name=subcat,
+                legendgroup=subcat, showlegend=False,
+                line=dict(color=color, width=3, dash="dash"), marker=dict(size=8, symbol="diamond"),
             ))
-        fig_os_stack.update_layout(
-            barmode="stack",
+        fig_os_trend.update_layout(
             yaxis_tickprefix="$", yaxis_tickformat=",",
             xaxis=dict(dtick=1),
-            margin=dict(l=20, r=20, t=10, b=20), height=450,
+            margin=dict(l=20, r=20, t=10, b=20), height=400,
             legend=dict(orientation="h", yanchor="bottom", y=-0.25),
         )
-        st.plotly_chart(fig_os_stack, use_container_width=True)
+        st.plotly_chart(fig_os_trend, use_container_width=True)
 
-    with os_c2:
-        st.subheader(f"🍩 Allocation Split ({latest_year})")
-        pie_data = df_os_sub[(df_os_sub["Year"] == latest_year) & (df_os_sub["Period"] == "Actual")]
-        fig_os_pie = px.pie(
-            pie_data, names="Subcategory", values="Budget",
-            color="Subcategory", color_discrete_map=sub_colors, hole=0.45,
+        # ── Summary table ──
+        st.subheader("📋 Summary Table")
+        os_summary = df_os_sub.pivot_table(
+            index="Subcategory", columns="Year", values="Budget", aggfunc="sum"
         )
-        fig_os_pie.update_traces(
-            textinfo="percent+label+value", textposition="outside",
-            texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
-        )
-        fig_os_pie.update_layout(
-            margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
-        )
-        st.plotly_chart(fig_os_pie, use_container_width=True)
+        os_summary.columns = [str(int(c)) for c in os_summary.columns]
+        os_summary["Total"] = os_summary.sum(axis=1)
+        st.dataframe(os_summary.style.format("${:,.0f}"), use_container_width=True, height=150)
 
-    # ── Trend lines ──
-    st.subheader("📈 Subcategory Trends (Actual + Projected)")
-    fig_os_trend = go.Figure()
-    for subcat in outside_split:
-        subset = df_os_sub[df_os_sub["Subcategory"] == subcat]
-        actual_s = subset[subset["Period"] == "Actual"].sort_values("Year")
-        proj_s = subset[subset["Period"] == "Projected"].sort_values("Year")
-        last_a = actual_s[actual_s["Year"] == actual_s["Year"].max()]
-        proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_s])
-        color = sub_colors[subcat]
-        fig_os_trend.add_trace(go.Scatter(
-            x=actual_s["Year"], y=actual_s["Budget"],
-            mode="lines+markers", name=subcat,
-            legendgroup=subcat,
-            line=dict(color=color, width=3), marker=dict(size=8),
+        # ── Department breakdown ──
+        st.subheader(f"🏢 Outside Services by Department ({latest_year})")
+        os_dept = os_data[os_data["Year"] == latest_year].groupby("Department")["Budget"].sum().sort_values(ascending=True).reset_index()
+        os_dept["Short Name"] = os_dept["Department"].map(short_name_map)
+        os_dept["Infrastructure"] = os_dept["Budget"] * outside_split["Infrastructure"]
+        os_dept["App Development"] = os_dept["Budget"] * outside_split["Application Development"]
+
+        fig_os_dept = go.Figure()
+        fig_os_dept.add_trace(go.Bar(
+            y=os_dept["Short Name"], x=os_dept["Infrastructure"],
+            name="Infrastructure", orientation="h", marker_color="#1B3A5F",
         ))
-        fig_os_trend.add_trace(go.Scatter(
-            x=proj_bridge["Year"], y=proj_bridge["Budget"],
-            mode="lines+markers", name=subcat,
-            legendgroup=subcat, showlegend=False,
-            line=dict(color=color, width=3, dash="dash"), marker=dict(size=8, symbol="diamond"),
+        fig_os_dept.add_trace(go.Bar(
+            y=os_dept["Short Name"], x=os_dept["App Development"],
+            name="App Development", orientation="h", marker_color="#D4A84B",
         ))
-    fig_os_trend.update_layout(
-        yaxis_tickprefix="$", yaxis_tickformat=",",
-        xaxis=dict(dtick=1),
-        margin=dict(l=20, r=20, t=10, b=20), height=400,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.25),
-    )
-    st.plotly_chart(fig_os_trend, use_container_width=True)
-
-    # ── Summary table ──
-    st.subheader("📋 Summary Table")
-    os_summary = df_os_sub.pivot_table(
-        index="Subcategory", columns="Year", values="Budget", aggfunc="sum"
-    )
-    os_summary.columns = [str(int(c)) for c in os_summary.columns]
-    os_summary["Total"] = os_summary.sum(axis=1)
-    st.dataframe(os_summary.style.format("${:,.0f}"), use_container_width=True, height=150)
-
-    # ── Department breakdown ──
-    st.subheader(f"🏢 Outside Services by Department — Top 10 ({latest_year})")
-    os_dept_all = os_data[os_data["Year"] == latest_year].groupby("Department")["Budget"].sum().sort_values(ascending=False).reset_index()
-    if len(os_dept_all) > 10:
-        top10 = os_dept_all.head(10)
-        others_val = os_dept_all.iloc[10:]["Budget"].sum()
-        others_row = pd.DataFrame([{"Department": "Others", "Budget": others_val}])
-        os_dept = pd.concat([top10, others_row], ignore_index=True).sort_values("Budget", ascending=True)
-    else:
-        os_dept = os_dept_all.sort_values("Budget", ascending=True)
-    os_dept["Short Name"] = os_dept["Department"].map(lambda d: short_name_map.get(d, d))
-    os_dept["Infrastructure"] = os_dept["Budget"] * outside_split["Infrastructure"]
-    os_dept["App Development"] = os_dept["Budget"] * outside_split["Application Development"]
-
-    fig_os_dept = go.Figure()
-    fig_os_dept.add_trace(go.Bar(
-        y=os_dept["Short Name"], x=os_dept["Infrastructure"],
-        name="Infrastructure", orientation="h", marker_color="#1B3A5F",
-    ))
-    fig_os_dept.add_trace(go.Bar(
-        y=os_dept["Short Name"], x=os_dept["App Development"],
-        name="App Development", orientation="h", marker_color="#D4A84B",
-    ))
-    fig_os_dept.update_layout(
-        barmode="stack",
-        xaxis_tickprefix="$", xaxis_tickformat=",",
-        margin=dict(l=20, r=20, t=10, b=20),
-        height=max(400, len(os_dept) * 25),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.15),
-        yaxis_title="",
-    )
-    st.plotly_chart(fig_os_dept, use_container_width=True)
-
-# ══════════════════════════════════════════════════════════════
-# TAB 4: APP DEV WORKTYPES
-# ══════════════════════════════════════════════════════════════
-with tab_worktypes:
-
-    st.caption(
-        f"Application Development budget ({pct_appdev}% of Outside Services) split across 5 worktypes per department. "
-        f"Splits loaded from **worktype_splits.csv**. Growth multiplier: **{growth_multiplier}x**."
-    )
-
-    # Get Outside Services by department and year
-    os_mask_wt = (
-        (df["Department"].isin(selected_departments)) &
-        (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
-    )
-    os_data_wt = df[os_mask_wt]
-
-    # Build worktype data using department-level splits
-    wt_rows = []
-    for dept in selected_departments:
-        dept_os = os_data_wt[os_data_wt["Department"] == dept].groupby("Year")["Budget"].sum().reset_index()
-        dept_os["Budget"] = dept_os["Budget"] * outside_split["Application Development"]
-        splits = dept_worktype_splits.get(dept, {wt: 0.2 for wt in wt_categories})
-
-        for _, row in dept_os.iterrows():
-            for wt in wt_categories:
-                wt_rows.append({
-                    "Year": row["Year"], "Worktype": wt,
-                    "Budget": row["Budget"] * splits[wt], "Period": "Actual",
-                    "Department": dept,
-                })
-
-        # Project each worktype independently per department
-        for wt in wt_categories:
-            wt_hist = [
-                dept_os[dept_os["Year"] == y]["Budget"].sum() * splits[wt]
-                for y in all_hist_years
-            ]
-            compound_multiplier = growth_multiplier * wt_growth[wt]
-            wt_proj = project_series(all_hist_years, wt_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, wt)) % 10000)
-            for fy, fv in zip(future_years, wt_proj):
-                wt_rows.append({
-                    "Year": fy, "Worktype": wt,
-                    "Budget": fv, "Period": "Projected",
-                    "Department": dept,
-                })
-
-    df_wt = pd.DataFrame(wt_rows)
-
-    # Aggregate for charts
-    df_wt_agg = df_wt.groupby(["Year", "Worktype", "Period"])["Budget"].sum().reset_index()
-
-    # ── KPIs ──
-    ad_latest_by_wt = df_wt_agg[(df_wt_agg["Year"] == latest_year) & (df_wt_agg["Period"] == "Actual")]
-    wk1, wk2, wk3, wk4, wk5 = st.columns(5)
-    for col, wt in zip([wk1, wk2, wk3, wk4, wk5], wt_categories):
-        val = ad_latest_by_wt[ad_latest_by_wt["Worktype"] == wt]["Budget"].sum()
-        col.metric(wt, fmt(val), f"{wt_growth[wt]}x growth")
-
-    st.divider()
-
-    wt_colors = {
-        "Workflow": "#1B3A5F",
-        "Analysis": "#1A7A72",
-        "Collaboration": "#D4A84B",
-        "Transactions": "#8B2942",
-        "External Facing": "#7C3AED",
-    }
-
-    wt_c1, wt_c2 = st.columns(2)
-
-    with wt_c1:
-        st.subheader("📊 Worktypes by Year")
-        fig_wt_stack = go.Figure()
-        for wt in wt_categories:
-            subset = df_wt_agg[df_wt_agg["Worktype"] == wt].sort_values("Year")
-            actual_b = subset[subset["Period"] == "Actual"]
-            proj_b = subset[subset["Period"] == "Projected"]
-            color = wt_colors[wt]
-            fig_wt_stack.add_trace(go.Bar(
-                x=actual_b["Year"], y=actual_b["Budget"],
-                name=wt, legendgroup=wt,
-                marker_color=color,
-            ))
-            fig_wt_stack.add_trace(go.Bar(
-                x=proj_b["Year"], y=proj_b["Budget"],
-                name=wt, legendgroup=wt, showlegend=False,
-                marker_color=color, marker_pattern_shape="/",
-            ))
-        fig_wt_stack.update_layout(
+        fig_os_dept.update_layout(
             barmode="stack",
+            xaxis_tickprefix="$", xaxis_tickformat=",",
+            margin=dict(l=20, r=20, t=10, b=20),
+            height=max(400, len(os_dept) * 25),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15),
+            yaxis_title="",
+        )
+        st.plotly_chart(fig_os_dept, use_container_width=True)
+
+        # ══════════════════════════════════════════════════════════════
+        # APPLICATIONS
+        # ══════════════════════════════════════════════════════════════
+    with ptab_worktypes:
+
+        st.caption(
+            f"Application Development budget ({pct_appdev}% of Outside Services) split across 5 worktypes per department. "
+            f"Splits loaded from **worktype_splits.csv**. Growth multiplier: **{growth_multiplier}x**."
+        )
+
+        # Get Outside Services by department and year
+        os_mask_wt = (
+            (df["Department"].isin(selected_departments)) &
+            (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
+        )
+        os_data_wt = df[os_mask_wt]
+
+        # Build worktype data using department-level splits
+        wt_rows = []
+        for dept in selected_departments:
+            dept_os = os_data_wt[os_data_wt["Department"] == dept].groupby("Year")["Budget"].sum().reset_index()
+            dept_os["Budget"] = dept_os["Budget"] * outside_split["Application Development"]
+            splits = dept_worktype_splits.get(dept, {wt: 0.2 for wt in wt_categories})
+
+            for _, row in dept_os.iterrows():
+                for wt in wt_categories:
+                    wt_rows.append({
+                        "Year": row["Year"], "Worktype": wt,
+                        "Budget": row["Budget"] * splits[wt], "Period": "Actual",
+                        "Department": dept,
+                    })
+
+            # Project each worktype independently per department
+            for wt in wt_categories:
+                wt_hist = [
+                    dept_os[dept_os["Year"] == y]["Budget"].sum() * splits[wt]
+                    for y in all_hist_years
+                ]
+                compound_multiplier = growth_multiplier * wt_growth[wt]
+                wt_proj = project_series(all_hist_years, wt_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, wt)) % 10000)
+                for fy, fv in zip(future_years, wt_proj):
+                    wt_rows.append({
+                        "Year": fy, "Worktype": wt,
+                        "Budget": fv, "Period": "Projected",
+                        "Department": dept,
+                    })
+
+        df_wt = pd.DataFrame(wt_rows)
+
+        # Aggregate for charts
+        df_wt_agg = df_wt.groupby(["Year", "Worktype", "Period"])["Budget"].sum().reset_index()
+
+        # ── KPIs ──
+        ad_latest_by_wt = df_wt_agg[(df_wt_agg["Year"] == latest_year) & (df_wt_agg["Period"] == "Actual")]
+        wk1, wk2, wk3, wk4, wk5 = st.columns(5)
+        for col, wt in zip([wk1, wk2, wk3, wk4, wk5], wt_categories):
+            val = ad_latest_by_wt[ad_latest_by_wt["Worktype"] == wt]["Budget"].sum()
+            col.metric(wt, fmt(val), f"{wt_growth[wt]}x growth")
+
+        st.divider()
+
+        wt_colors = {
+            "Workflow": "#1B3A5F",
+            "Analysis": "#1A7A72",
+            "Collaboration": "#D4A84B",
+            "Transactions": "#8B2942",
+            "External Facing": "#7C3AED",
+        }
+
+        wt_c1, wt_c2 = st.columns(2)
+
+        with wt_c1:
+            st.subheader("📊 Worktypes by Year")
+            fig_wt_stack = go.Figure()
+            for wt in wt_categories:
+                subset = df_wt_agg[df_wt_agg["Worktype"] == wt].sort_values("Year")
+                actual_b = subset[subset["Period"] == "Actual"]
+                proj_b = subset[subset["Period"] == "Projected"]
+                color = wt_colors[wt]
+                fig_wt_stack.add_trace(go.Bar(
+                    x=actual_b["Year"], y=actual_b["Budget"],
+                    name=wt, legendgroup=wt,
+                    marker_color=color,
+                ))
+                fig_wt_stack.add_trace(go.Bar(
+                    x=proj_b["Year"], y=proj_b["Budget"],
+                    name=wt, legendgroup=wt, showlegend=False,
+                    marker_color=color, marker_pattern_shape="/",
+                ))
+            fig_wt_stack.update_layout(
+                barmode="stack",
+                yaxis_tickprefix="$", yaxis_tickformat=",",
+                xaxis=dict(dtick=1),
+                margin=dict(l=20, r=20, t=10, b=20), height=450,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3, font=dict(size=10)),
+            )
+            st.plotly_chart(fig_wt_stack, use_container_width=True)
+
+        with wt_c2:
+            st.subheader(f"🍩 Worktype Allocation ({latest_year})")
+            pie_wt = df_wt_agg[(df_wt_agg["Year"] == latest_year) & (df_wt_agg["Period"] == "Actual")]
+            fig_wt_pie = px.pie(
+                pie_wt, names="Worktype", values="Budget",
+                color="Worktype", color_discrete_map=wt_colors, hole=0.45,
+            )
+            fig_wt_pie.update_traces(
+                textinfo="percent+label+value", textposition="outside",
+                texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
+            )
+            fig_wt_pie.update_layout(
+                margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
+            )
+            st.plotly_chart(fig_wt_pie, use_container_width=True)
+
+        # ── Trend lines per worktype (diverging projections) ──
+        st.subheader("📈 Worktype Trends — Diverging Growth Projections")
+        fig_wt_trend = go.Figure()
+        for wt in wt_categories:
+            subset = df_wt_agg[df_wt_agg["Worktype"] == wt]
+            actual_w = subset[subset["Period"] == "Actual"].sort_values("Year")
+            proj_w = subset[subset["Period"] == "Projected"].sort_values("Year")
+            last_a = actual_w[actual_w["Year"] == actual_w["Year"].max()]
+            proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_w])
+            color = wt_colors[wt]
+            fig_wt_trend.add_trace(go.Scatter(
+                x=actual_w["Year"], y=actual_w["Budget"],
+                mode="lines+markers", name=wt,
+                legendgroup=wt,
+                line=dict(color=color, width=2.5), marker=dict(size=7),
+            ))
+            fig_wt_trend.add_trace(go.Scatter(
+                x=proj_bridge["Year"], y=proj_bridge["Budget"],
+                mode="lines+markers", name=wt,
+                legendgroup=wt, showlegend=False,
+                line=dict(color=color, width=2.5, dash="dash"),
+                marker=dict(size=7, symbol="diamond"),
+            ))
+        fig_wt_trend.update_layout(
             yaxis_tickprefix="$", yaxis_tickformat=",",
             xaxis=dict(dtick=1),
-            margin=dict(l=20, r=20, t=10, b=20), height=450,
+            margin=dict(l=20, r=20, t=10, b=20), height=420,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.35, font=dict(size=10)),
+        )
+        st.plotly_chart(fig_wt_trend, use_container_width=True)
+
+        # ── Projected share shift ──
+        st.subheader("📐 Projected Share Shift by Worktype")
+        proj_only = df_wt_agg[df_wt_agg["Period"] == "Projected"].copy()
+        proj_totals = proj_only.groupby("Year")["Budget"].sum().rename("Total")
+        proj_only = proj_only.merge(proj_totals, on="Year")
+        proj_only["Share %"] = (proj_only["Budget"] / proj_only["Total"]) * 100
+
+        fig_share = px.area(
+            proj_only, x="Year", y="Share %", color="Worktype",
+            color_discrete_map=wt_colors,
+            groupnorm="percent",
+        )
+        fig_share.update_layout(
+            yaxis_title="Share %", yaxis_ticksuffix="%",
+            xaxis=dict(dtick=1),
+            margin=dict(l=20, r=20, t=10, b=20), height=350,
             legend=dict(orientation="h", yanchor="bottom", y=-0.3, font=dict(size=10)),
         )
-        st.plotly_chart(fig_wt_stack, use_container_width=True)
+        st.plotly_chart(fig_share, use_container_width=True)
 
-    with wt_c2:
-        st.subheader(f"🍩 Worktype Allocation ({latest_year})")
-        pie_wt = df_wt_agg[(df_wt_agg["Year"] == latest_year) & (df_wt_agg["Period"] == "Actual")]
-        fig_wt_pie = px.pie(
-            pie_wt, names="Worktype", values="Budget",
-            color="Worktype", color_discrete_map=wt_colors, hole=0.45,
+        # ── Summary table ──
+        st.subheader("📋 Worktype Summary Table")
+        wt_summary = df_wt_agg.pivot_table(
+            index="Worktype", columns="Year", values="Budget", aggfunc="sum"
         )
-        fig_wt_pie.update_traces(
-            textinfo="percent+label+value", textposition="outside",
-            texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
+        wt_summary.columns = [str(int(c)) for c in wt_summary.columns]
+        wt_summary["Total"] = wt_summary.sum(axis=1)
+        st.dataframe(wt_summary.style.format("${:,.0f}"), use_container_width=True, height=250)
+
+        # ── Department breakdown by worktype ──
+        if selected_department != "All Departments":
+            st.subheader(f"🏢 {selected_department} — Worktype Breakdown ({latest_year})")
+            dept_wt_data = df_wt[
+                (df_wt["Department"] == selected_department) &
+                (df_wt["Year"] == latest_year) &
+                (df_wt["Period"] == "Actual")
+            ].groupby("Worktype")["Budget"].sum().reset_index()
+            if not dept_wt_data.empty:
+                fig_wt_dept = px.bar(
+                    dept_wt_data, x="Worktype", y="Budget",
+                    color="Worktype", color_discrete_map=wt_colors,
+                )
+                fig_wt_dept.update_layout(
+                    yaxis_tickprefix="$", yaxis_tickformat=",",
+                    margin=dict(l=20, r=20, t=10, b=20), height=350,
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_wt_dept, use_container_width=True)
+
+        # ══════════════════════════════════════════════════════════════
+        # INFRASTRUCTURE
+        # ══════════════════════════════════════════════════════════════
+    with ptab_infra:
+
+        st.caption(
+            f"Infrastructure budget ({pct_infra}% of Outside Services) split across 4 categories per department. "
+            f"Splits loaded from **worktype_splits.csv**. Growth multiplier: **{growth_multiplier}x**."
         )
-        fig_wt_pie.update_layout(
-            margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
+
+        # Get Outside Services by department and year
+        os_mask_inf = (
+            (df["Department"].isin(selected_departments)) &
+            (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
         )
-        st.plotly_chart(fig_wt_pie, use_container_width=True)
+        os_data_inf = df[os_mask_inf]
 
-    # ── Trend lines per worktype (diverging projections) ──
-    st.subheader("📈 Worktype Trends — Diverging Growth Projections")
-    fig_wt_trend = go.Figure()
-    for wt in wt_categories:
-        subset = df_wt_agg[df_wt_agg["Worktype"] == wt]
-        actual_w = subset[subset["Period"] == "Actual"].sort_values("Year")
-        proj_w = subset[subset["Period"] == "Projected"].sort_values("Year")
-        last_a = actual_w[actual_w["Year"] == actual_w["Year"].max()]
-        proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_w])
-        color = wt_colors[wt]
-        fig_wt_trend.add_trace(go.Scatter(
-            x=actual_w["Year"], y=actual_w["Budget"],
-            mode="lines+markers", name=wt,
-            legendgroup=wt,
-            line=dict(color=color, width=2.5), marker=dict(size=7),
-        ))
-        fig_wt_trend.add_trace(go.Scatter(
-            x=proj_bridge["Year"], y=proj_bridge["Budget"],
-            mode="lines+markers", name=wt,
-            legendgroup=wt, showlegend=False,
-            line=dict(color=color, width=2.5, dash="dash"),
-            marker=dict(size=7, symbol="diamond"),
-        ))
-    fig_wt_trend.update_layout(
-        yaxis_tickprefix="$", yaxis_tickformat=",",
-        xaxis=dict(dtick=1),
-        margin=dict(l=20, r=20, t=10, b=20), height=420,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.35, font=dict(size=10)),
-    )
-    st.plotly_chart(fig_wt_trend, use_container_width=True)
+        # Build infra category data using department-level splits
+        inf_rows = []
+        for dept in selected_departments:
+            dept_os = os_data_inf[os_data_inf["Department"] == dept].groupby("Year")["Budget"].sum().reset_index()
+            dept_os["Budget"] = dept_os["Budget"] * outside_split["Infrastructure"]
+            splits = dept_infra_splits.get(dept, {cat: 0.25 for cat in inf_categories})
 
-    # ── Projected share shift ──
-    # ── Overlap Preview ──
-    st.subheader("🔀 Worktype Overlap Across Sectors")
-    st.caption("Preview of where duplicated worktypes create consolidation opportunities. Full analysis in Savings tab.")
-    if len(df_wt_overlap) > 0:
-        ov_preview = df_wt_overlap.copy()
-        ov_preview["Savings Potential"] = ov_preview["Estimated Overlap (%)"] * ov_preview["Estimated % of Total Org Load (Per Group)"] / 100
-        fig_ov_preview = px.scatter(
-            ov_preview, x="Estimated Overlap (%)", y="Estimated % of Total Org Load (Per Group)",
-            size="Savings Potential", color="Work Type",
-            hover_name="Overlap Group",
-            color_discrete_map=wt_colors,
-            size_max=40,
-        )
-        fig_ov_preview.update_layout(
-            xaxis_title="Overlap %", yaxis_title="Load % (Per Group)",
-            margin=dict(l=20, r=20, t=10, b=20), height=400,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, font=dict(size=10)),
-        )
-        st.plotly_chart(fig_ov_preview, use_container_width=True)
+            for _, row in dept_os.iterrows():
+                for cat in inf_categories:
+                    inf_rows.append({
+                        "Year": row["Year"], "Category": cat,
+                        "Budget": row["Budget"] * splits[cat], "Period": "Actual",
+                        "Department": dept,
+                    })
 
-    # ── Summary table ──
-    st.subheader("📋 Worktype Summary Table")
-    wt_summary = df_wt_agg.pivot_table(
-        index="Worktype", columns="Year", values="Budget", aggfunc="sum"
-    )
-    wt_summary.columns = [str(int(c)) for c in wt_summary.columns]
-    wt_summary["Total"] = wt_summary.sum(axis=1)
-    st.dataframe(wt_summary.style.format("${:,.0f}"), use_container_width=True, height=250)
-
-    # ── Department breakdown by worktype ──
-    if selected_department != "All Departments":
-        st.subheader(f"🏢 {selected_department} — Worktype Breakdown ({latest_year})")
-        dept_wt_data = df_wt[
-            (df_wt["Department"] == selected_department) &
-            (df_wt["Year"] == latest_year) &
-            (df_wt["Period"] == "Actual")
-        ].groupby("Worktype")["Budget"].sum().reset_index()
-        if not dept_wt_data.empty:
-            fig_wt_dept = px.bar(
-                dept_wt_data, x="Worktype", y="Budget",
-                color="Worktype", color_discrete_map=wt_colors,
-            )
-            fig_wt_dept.update_layout(
-                yaxis_tickprefix="$", yaxis_tickformat=",",
-                margin=dict(l=20, r=20, t=10, b=20), height=350,
-                showlegend=False,
-            )
-            st.plotly_chart(fig_wt_dept, use_container_width=True)
-
-# ══════════════════════════════════════════════════════════════
-# TAB 5: INFRASTRUCTURE BREAKDOWN
-# ══════════════════════════════════════════════════════════════
-with tab_infra:
-
-    st.caption(
-        f"Infrastructure budget ({pct_infra}% of Outside Services) split across 4 categories per department. "
-        f"Splits loaded from **worktype_splits.csv**. Growth multiplier: **{growth_multiplier}x**."
-    )
-
-    # Get Outside Services by department and year
-    os_mask_inf = (
-        (df["Department"].isin(selected_departments)) &
-        (df["IT Type"].isin(["IT Outside Services", "IT Outside Services*"]))
-    )
-    os_data_inf = df[os_mask_inf]
-
-    # Build infra category data using department-level splits
-    inf_rows = []
-    for dept in selected_departments:
-        dept_os = os_data_inf[os_data_inf["Department"] == dept].groupby("Year")["Budget"].sum().reset_index()
-        dept_os["Budget"] = dept_os["Budget"] * outside_split["Infrastructure"]
-        splits = dept_infra_splits.get(dept, {cat: 0.25 for cat in inf_categories})
-
-        for _, row in dept_os.iterrows():
             for cat in inf_categories:
-                inf_rows.append({
-                    "Year": row["Year"], "Category": cat,
-                    "Budget": row["Budget"] * splits[cat], "Period": "Actual",
-                    "Department": dept,
-                })
+                cat_hist = [
+                    dept_os[dept_os["Year"] == y]["Budget"].sum() * splits[cat]
+                    for y in all_hist_years
+                ]
+                compound_multiplier = growth_multiplier * infra_growth[cat]
+                cat_proj = project_series(all_hist_years, cat_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, cat)) % 10000)
+                for fy, fv in zip(future_years, cat_proj):
+                    inf_rows.append({
+                        "Year": fy, "Category": cat,
+                        "Budget": fv, "Period": "Projected",
+                        "Department": dept,
+                    })
 
+        df_inf = pd.DataFrame(inf_rows)
+        df_inf_agg = df_inf.groupby(["Year", "Category", "Period"])["Budget"].sum().reset_index()
+
+        # ── KPIs ──
+        inf_latest_by_cat = df_inf_agg[(df_inf_agg["Year"] == latest_year) & (df_inf_agg["Period"] == "Actual")]
+        inf_total_latest = inf_latest_by_cat["Budget"].sum()
+        ik1, ik2, ik3, ik4 = st.columns(4)
+        for col, cat in zip([ik1, ik2, ik3, ik4], inf_categories):
+            val = inf_latest_by_cat[inf_latest_by_cat["Category"] == cat]["Budget"].sum()
+            pct = (val / inf_total_latest * 100) if inf_total_latest else 0
+            col.metric(cat, fmt(val), f"{pct:.1f}% of infra")
+
+        st.divider()
+
+        inf_colors = {
+            "Integration": "#1B3A5F",
+            "Access": "#1A7A72",
+            "Data": "#D4A84B",
+            "Communications": "#8B2942",
+        }
+
+        inf_c1, inf_c2 = st.columns(2)
+
+        with inf_c1:
+            st.subheader("📊 Infrastructure Categories by Year")
+            fig_inf_stack = go.Figure()
+            for cat in inf_categories:
+                subset = df_inf_agg[df_inf_agg["Category"] == cat].sort_values("Year")
+                actual_b = subset[subset["Period"] == "Actual"]
+                proj_b = subset[subset["Period"] == "Projected"]
+                color = inf_colors[cat]
+                fig_inf_stack.add_trace(go.Bar(
+                    x=actual_b["Year"], y=actual_b["Budget"],
+                    name=cat, legendgroup=cat,
+                    marker_color=color,
+                ))
+                fig_inf_stack.add_trace(go.Bar(
+                    x=proj_b["Year"], y=proj_b["Budget"],
+                    name=cat, legendgroup=cat, showlegend=False,
+                    marker_color=color, marker_pattern_shape="/",
+                ))
+            fig_inf_stack.update_layout(
+                barmode="stack",
+                yaxis_tickprefix="$", yaxis_tickformat=",",
+                xaxis=dict(dtick=1),
+                margin=dict(l=20, r=20, t=10, b=20), height=450,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.25),
+            )
+            st.plotly_chart(fig_inf_stack, use_container_width=True)
+
+        with inf_c2:
+            st.subheader(f"🍩 Infrastructure Allocation ({latest_year})")
+            pie_inf = df_inf_agg[(df_inf_agg["Year"] == latest_year) & (df_inf_agg["Period"] == "Actual")]
+            fig_inf_pie = px.pie(
+                pie_inf, names="Category", values="Budget",
+                color="Category", color_discrete_map=inf_colors, hole=0.45,
+            )
+            fig_inf_pie.update_traces(
+                textinfo="percent+label+value", textposition="outside",
+                texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
+            )
+            fig_inf_pie.update_layout(
+                margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
+            )
+            st.plotly_chart(fig_inf_pie, use_container_width=True)
+
+        # ── Trend lines with diverging projections ──
+        st.subheader("📈 Infrastructure Trends — Diverging Growth Projections")
+        fig_inf_trend = go.Figure()
         for cat in inf_categories:
-            cat_hist = [
-                dept_os[dept_os["Year"] == y]["Budget"].sum() * splits[cat]
-                for y in all_hist_years
-            ]
-            compound_multiplier = growth_multiplier * infra_growth[cat]
-            cat_proj = project_series(all_hist_years, cat_hist, future_years, compound_multiplier, projection_noise, seed=hash((dept, cat)) % 10000)
-            for fy, fv in zip(future_years, cat_proj):
-                inf_rows.append({
-                    "Year": fy, "Category": cat,
-                    "Budget": fv, "Period": "Projected",
-                    "Department": dept,
-                })
-
-    df_inf = pd.DataFrame(inf_rows)
-    df_inf_agg = df_inf.groupby(["Year", "Category", "Period"])["Budget"].sum().reset_index()
-
-    # ── KPIs ──
-    inf_latest_by_cat = df_inf_agg[(df_inf_agg["Year"] == latest_year) & (df_inf_agg["Period"] == "Actual")]
-    inf_total_latest = inf_latest_by_cat["Budget"].sum()
-    ik1, ik2, ik3, ik4 = st.columns(4)
-    for col, cat in zip([ik1, ik2, ik3, ik4], inf_categories):
-        val = inf_latest_by_cat[inf_latest_by_cat["Category"] == cat]["Budget"].sum()
-        pct = (val / inf_total_latest * 100) if inf_total_latest else 0
-        col.metric(cat, fmt(val), f"{pct:.1f}% of infra")
-
-    st.divider()
-
-    inf_colors = {
-        "Integration": "#1B3A5F",
-        "Access": "#1A7A72",
-        "Data": "#D4A84B",
-        "Communications": "#8B2942",
-    }
-
-    inf_c1, inf_c2 = st.columns(2)
-
-    with inf_c1:
-        st.subheader("📊 Infrastructure Categories by Year")
-        fig_inf_stack = go.Figure()
-        for cat in inf_categories:
-            subset = df_inf_agg[df_inf_agg["Category"] == cat].sort_values("Year")
-            actual_b = subset[subset["Period"] == "Actual"]
-            proj_b = subset[subset["Period"] == "Projected"]
+            subset = df_inf_agg[df_inf_agg["Category"] == cat]
+            actual_i = subset[subset["Period"] == "Actual"].sort_values("Year")
+            proj_i = subset[subset["Period"] == "Projected"].sort_values("Year")
+            last_a = actual_i[actual_i["Year"] == actual_i["Year"].max()]
+            proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_i])
             color = inf_colors[cat]
-            fig_inf_stack.add_trace(go.Bar(
-                x=actual_b["Year"], y=actual_b["Budget"],
-                name=cat, legendgroup=cat,
-                marker_color=color,
+            fig_inf_trend.add_trace(go.Scatter(
+                x=actual_i["Year"], y=actual_i["Budget"],
+                mode="lines+markers", name=cat,
+                legendgroup=cat,
+                line=dict(color=color, width=2.5), marker=dict(size=7),
             ))
-            fig_inf_stack.add_trace(go.Bar(
-                x=proj_b["Year"], y=proj_b["Budget"],
-                name=cat, legendgroup=cat, showlegend=False,
-                marker_color=color, marker_pattern_shape="/",
+            fig_inf_trend.add_trace(go.Scatter(
+                x=proj_bridge["Year"], y=proj_bridge["Budget"],
+                mode="lines+markers", name=cat,
+                legendgroup=cat, showlegend=False,
+                line=dict(color=color, width=2.5, dash="dash"),
+                marker=dict(size=7, symbol="diamond"),
             ))
-        fig_inf_stack.update_layout(
-            barmode="stack",
+        fig_inf_trend.update_layout(
             yaxis_tickprefix="$", yaxis_tickformat=",",
             xaxis=dict(dtick=1),
-            margin=dict(l=20, r=20, t=10, b=20), height=450,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25),
+            margin=dict(l=20, r=20, t=10, b=20), height=420,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, font=dict(size=10)),
         )
-        st.plotly_chart(fig_inf_stack, use_container_width=True)
+        st.plotly_chart(fig_inf_trend, use_container_width=True)
 
-    with inf_c2:
-        st.subheader(f"🍩 Infrastructure Allocation ({latest_year})")
-        pie_inf = df_inf_agg[(df_inf_agg["Year"] == latest_year) & (df_inf_agg["Period"] == "Actual")]
-        fig_inf_pie = px.pie(
-            pie_inf, names="Category", values="Budget",
-            color="Category", color_discrete_map=inf_colors, hole=0.45,
-        )
-        fig_inf_pie.update_traces(
-            textinfo="percent+label+value", textposition="outside",
-            texttemplate="%{label}<br>%{percent}<br>$%{value:,.0f}"
-        )
-        fig_inf_pie.update_layout(
-            margin=dict(l=20, r=20, t=10, b=20), height=450, showlegend=False,
-        )
-        st.plotly_chart(fig_inf_pie, use_container_width=True)
+        # ── Projected share shift ──
+        st.subheader("📐 Projected Share Shift by Category")
+        proj_inf_only = df_inf_agg[df_inf_agg["Period"] == "Projected"].copy()
+        proj_inf_totals = proj_inf_only.groupby("Year")["Budget"].sum().rename("Total")
+        proj_inf_only = proj_inf_only.merge(proj_inf_totals, on="Year")
+        proj_inf_only["Share %"] = (proj_inf_only["Budget"] / proj_inf_only["Total"]) * 100
 
-    # ── Trend lines with diverging projections ──
-    st.subheader("📈 Infrastructure Trends — Diverging Growth Projections")
-    fig_inf_trend = go.Figure()
-    for cat in inf_categories:
-        subset = df_inf_agg[df_inf_agg["Category"] == cat]
-        actual_i = subset[subset["Period"] == "Actual"].sort_values("Year")
-        proj_i = subset[subset["Period"] == "Projected"].sort_values("Year")
-        last_a = actual_i[actual_i["Year"] == actual_i["Year"].max()]
-        proj_bridge = pd.concat([last_a.assign(Period="Projected"), proj_i])
-        color = inf_colors[cat]
-        fig_inf_trend.add_trace(go.Scatter(
-            x=actual_i["Year"], y=actual_i["Budget"],
-            mode="lines+markers", name=cat,
-            legendgroup=cat,
-            line=dict(color=color, width=2.5), marker=dict(size=7),
-        ))
-        fig_inf_trend.add_trace(go.Scatter(
-            x=proj_bridge["Year"], y=proj_bridge["Budget"],
-            mode="lines+markers", name=cat,
-            legendgroup=cat, showlegend=False,
-            line=dict(color=color, width=2.5, dash="dash"),
-            marker=dict(size=7, symbol="diamond"),
-        ))
-    fig_inf_trend.update_layout(
-        yaxis_tickprefix="$", yaxis_tickformat=",",
-        xaxis=dict(dtick=1),
-        margin=dict(l=20, r=20, t=10, b=20), height=420,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3, font=dict(size=10)),
-    )
-    st.plotly_chart(fig_inf_trend, use_container_width=True)
-
-    # ── Projected share shift ──
-    # ── Fragmentation Preview ──
-    st.subheader("🏗️ Infrastructure Fragmentation Across Sectors")
-    st.caption("Preview of where duplicated infrastructure creates consolidation opportunities. Full analysis in Savings tab.")
-    if len(df_inf_frag) > 0:
-        frag_preview = df_inf_frag.copy()
-        frag_preview["Savings Potential"] = frag_preview["Estimated Overlap (%)"] * frag_preview["Estimated % of Total Org Infrastructure Load (Per Group)"] / 100
-        fig_frag_preview = px.scatter(
-            frag_preview, x="Estimated Overlap (%)", y="Estimated % of Total Org Infrastructure Load (Per Group)",
-            size="Savings Potential", color="Infrastructure Type",
-            hover_name="Overlap Group",
+        fig_inf_share = px.area(
+            proj_inf_only, x="Year", y="Share %", color="Category",
             color_discrete_map=inf_colors,
-            size_max=40,
+            groupnorm="percent",
         )
-        fig_frag_preview.update_layout(
-            xaxis_title="Overlap %", yaxis_title="Load % (Per Group)",
-            margin=dict(l=20, r=20, t=10, b=20), height=400,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, font=dict(size=10)),
+        fig_inf_share.update_layout(
+            yaxis_title="Share %", yaxis_ticksuffix="%",
+            xaxis=dict(dtick=1),
+            margin=dict(l=20, r=20, t=10, b=20), height=350,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, font=dict(size=10)),
         )
-        st.plotly_chart(fig_frag_preview, use_container_width=True)
+        st.plotly_chart(fig_inf_share, use_container_width=True)
 
-    # ── Summary table ──
-    st.subheader("📋 Infrastructure Summary Table")
-    inf_summary = df_inf_agg.pivot_table(
-        index="Category", columns="Year", values="Budget", aggfunc="sum"
-    )
-    inf_summary.columns = [str(int(c)) for c in inf_summary.columns]
-    inf_summary["Total"] = inf_summary.sum(axis=1)
-    st.dataframe(inf_summary.style.format("${:,.0f}"), use_container_width=True, height=220)
+        # ── Summary table ──
+        st.subheader("📋 Infrastructure Summary Table")
+        inf_summary = df_inf_agg.pivot_table(
+            index="Category", columns="Year", values="Budget", aggfunc="sum"
+        )
+        inf_summary.columns = [str(int(c)) for c in inf_summary.columns]
+        inf_summary["Total"] = inf_summary.sum(axis=1)
+        st.dataframe(inf_summary.style.format("${:,.0f}"), use_container_width=True, height=220)
 
-    # ── Department breakdown ──
-    if selected_department != "All Departments":
-        st.subheader(f"🏢 {selected_department} — Infrastructure Breakdown ({latest_year})")
-        dept_inf_data = df_inf[
-            (df_inf["Department"] == selected_department) &
-            (df_inf["Year"] == latest_year) &
-            (df_inf["Period"] == "Actual")
-        ].groupby("Category")["Budget"].sum().reset_index()
-        if not dept_inf_data.empty:
-            fig_inf_dept = px.bar(
-                dept_inf_data, x="Category", y="Budget",
-                color="Category", color_discrete_map=inf_colors,
-            )
-            fig_inf_dept.update_layout(
-                yaxis_tickprefix="$", yaxis_tickformat=",",
-                margin=dict(l=20, r=20, t=10, b=20), height=350,
-                showlegend=False,
-            )
-            st.plotly_chart(fig_inf_dept, use_container_width=True)
+        # ── Department breakdown ──
+        if selected_department != "All Departments":
+            st.subheader(f"🏢 {selected_department} — Infrastructure Breakdown ({latest_year})")
+            dept_inf_data = df_inf[
+                (df_inf["Department"] == selected_department) &
+                (df_inf["Year"] == latest_year) &
+                (df_inf["Period"] == "Actual")
+            ].groupby("Category")["Budget"].sum().reset_index()
+            if not dept_inf_data.empty:
+                fig_inf_dept = px.bar(
+                    dept_inf_data, x="Category", y="Budget",
+                    color="Category", color_discrete_map=inf_colors,
+                )
+                fig_inf_dept.update_layout(
+                    yaxis_tickprefix="$", yaxis_tickformat=",",
+                    margin=dict(l=20, r=20, t=10, b=20), height=350,
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_inf_dept, use_container_width=True)
 
 
-# ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+
+    with ptab_lifecycle:
+        st.header('♻️ Lifecycle Optimization')
+        st.info('🚧 **Coming Soon** — Asset lifecycle analysis, technology debt assessment, and modernization roadmaps.')
+
 # SHARED: compute savings data across ALL years + projections
 # ══════════════════════════════════════════════════════════════
 
@@ -1572,10 +1229,10 @@ sw_by_year = df[sw_mask_all].groupby("Year")["Budget"].sum().reset_index()
 
 # Project OS and SW budgets into future years
 os_hist_vals = [os_by_year[os_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=200)
+os_proj_vals = project_series(all_hist_years, os_hist_vals, future_years, growth_multiplier, projection_noise, seed=100)
 
 sw_hist_vals = [sw_by_year[sw_by_year["Year"] == y]["Budget"].sum() for y in all_hist_years]
-sw_proj_vals = project_series(all_hist_years, sw_hist_vals, future_years, growth_multiplier, projection_noise, seed=300)
+sw_proj_vals = project_series(all_hist_years, sw_hist_vals, future_years, growth_multiplier)
 
 # Build year-by-year savings for all years
 all_years_range = list(range(selected_years[0], selected_years[1] + 1)) + future_years
@@ -1684,7 +1341,7 @@ grand_total_savings = total_wt_savings + total_inf_savings + total_ai_savings
 # ══════════════════════════════════════════════════════════════
 with tab_savings:
 
-    sub_summary, sub_overlap, sub_infra_consol, sub_ai, sub_lifecycle = st.tabs([
+    sub_summary, sub_overlap, sub_infra_consol, sub_ai, sub_lifecycle_sav = st.tabs([
         "📊 Total Summary",
         "🔀 Overlapping Applications",
         "🏗️ Infrastructure Consolidation",
@@ -1708,13 +1365,13 @@ with tab_savings:
         "Data": "#D4A84B", "Communications": "#8B2942",
     }
     ai_cat_colors = {
-        "Collaboration": "#1B3A5F", "Communications": "#1A7A72",
-        "Workflow": "#D4A84B", "Finance": "#8B2942",
-        "Analysis": "#7C3AED", "External Facing": "#3B82F6",
-        "Access": "#059669", "Security": "#D97706",
-        "Infrastructure": "#475569", "Transactions": "#8B2942",
-        "Development": "#1A7A72", "Integration": "#1B3A5F",
-        "Data": "#D4A84B",
+        "Collaboration": "#1a3a5c", "Communications": "#2d5a87",
+        "Workflow": "#4a90c4", "Finance": "#7bb8e0",
+        "Analysis": "#e07b39", "External Facing": "#c45d2c",
+        "Access": "#8b9dc3", "Security": "#5b7aa5",
+        "Infrastructure": "#3d6b8e", "Transactions": "#a5c8e1",
+        "Development": "#d4956a", "Integration": "#2a4d6e",
+        "Data": "#6a9bc3",
     }
     repl_colors = {"High": "#D97706", "Medium": "#3B82F6", "Low": "#475569"}
 
@@ -1858,18 +1515,6 @@ with tab_savings:
             fig_total_icicle.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=450)
             st.plotly_chart(fig_total_icicle, use_container_width=True)
 
-        # ── Sankey: Savings flow through taxonomy ──
-        st.subheader("🔀 Savings Flow — Sector → Asset Type → Categories → Savings/Remaining")
-        fig_sankey = build_savings_sankey(
-            df, selected_departments, dept_sector_map, short_name_map,
-            outside_split, dept_worktype_splits, dept_infra_splits, wt_categories, inf_categories,
-            total_wt_savings, total_inf_savings, total_ai_savings, latest_year
-        )
-        if fig_sankey:
-            st.plotly_chart(fig_sankey, use_container_width=True)
-        else:
-            st.info("No savings data available for Sankey diagram.")
-
         # ── Summary table ──
         st.subheader("📋 Savings by Year")
         display_sav = df_savings_yr[["Year", "Period", "App Overlap", "Infra Consolidation", "AI License Replacement", "Total Savings"]].copy()
@@ -1959,16 +1604,6 @@ with tab_savings:
                     .style.format({"Overlap %": "{:.0f}%", "Load %": "{:.1f}%", "Base Budget": "${:,.0f}", "Potential Savings": "${:,.0f}"}),
                     use_container_width=True, height=350
                 )
-
-            # ── Network Graph ──
-            st.divider()
-            st.subheader("🕸️ Overlap Network")
-            wt_net_html = build_pyvis_network(
-                df_wt_savings, type_col="Work Type", type_colors=wt_colors_tree,
-                title="Overlapping Applications Network"
-            )
-            components.html(wt_net_html, height=580, scrolling=False)
-
         else:
             st.info("No worktype overlap groups match the selected sectors.")
 
@@ -2050,16 +1685,6 @@ with tab_savings:
                     .style.format({"Overlap %": "{:.0f}%", "Load %": "{:.1f}%", "Base Budget": "${:,.0f}", "Potential Savings": "${:,.0f}"}),
                     use_container_width=True, height=350
                 )
-
-            # ── Network Graph ──
-            st.divider()
-            st.subheader("🕸️ Fragmentation Network")
-            inf_net_html = build_pyvis_network(
-                df_inf_savings, type_col="Infra Type", type_colors=inf_colors_tree,
-                title="Infrastructure Consolidation Network"
-            )
-            components.html(inf_net_html, height=580, scrolling=False)
-
         else:
             st.info("No infrastructure fragmentation groups match the selected sectors.")
 
@@ -2154,18 +1779,8 @@ with tab_savings:
         else:
             st.info("No IT Software budget found for the selected departments/year.")
 
-    # ════════════════════════════════════════════════════════
-    # SUB-TAB 5: LIFECYCLE OPTIMIZATION
-    # ════════════════════════════════════════════════════════
-    with sub_lifecycle:
+    with sub_lifecycle_sav:
         st.header("♻️ Lifecycle Optimization")
-        st.info("🚧 **Coming Soon** — This section will analyze asset lifecycle stages, replacement timelines, and modernization opportunities across the digital portfolio.")
-
-# ══════════════════════════════════════════════════════════════
-# TAB 7: LIFECYCLE OPTIMIZATION
-# ══════════════════════════════════════════════════════════════
-with tab_lifecycle:
-    st.header("♻️ Lifecycle Optimization")
-    st.info("🚧 **Coming Soon** — This section will provide comprehensive lifecycle analysis including asset age tracking, technology debt assessment, replacement planning, and ROI-based modernization roadmaps.")
+        st.info("🚧 **Coming Soon** — Savings-focused lifecycle optimization analysis.")
 
 st.caption("Data source: City of Chicago IT Budget | Digital Asset Model built with Streamlit & Plotly")
